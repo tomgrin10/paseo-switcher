@@ -5,11 +5,11 @@
   "description": "Ctrl+Tab workspace switching and back/forward navigation through workspaces, sessions, tabs, plugin pages and Settings. Type to find any workspace.",
   "media": [
     "docs/media/switcher.gif",
+    "docs/media/history.gif",
     "docs/media/switcher-list-dark.png",
     "docs/media/switcher-filter-dark.png",
     "docs/media/switcher-list-light.png",
-    "docs/media/switcher-thumbnails.gif",
-    "docs/media/switcher-phone-dark.png"
+    "docs/media/switcher-thumbnails.gif"
   ],
   "requirements": {
     "paseo": ">=0.15.0 <0.16.0"

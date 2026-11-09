@@ -48,9 +48,7 @@ paseo plugin install paseo-switcher
 
 While the switcher is open it takes every key, so typing never triggers a Paseo shortcut. Number keys jump to a row until you type a filter; after that they search pull request numbers too. Hovering a row selects it and clicking switches to it.
 
-The Command Center has **Switch workspace (Ctrl+Tab)** for browser tabs, where the browser keeps Ctrl+Tab for itself, and for the web UI on a phone, where a tap switches:
-
-<img alt="The switcher in a phone browser, opened from the Command Center" src="docs/media/switcher-phone-dark.png" width="300">
+The Command Center has **Switch workspace (Ctrl+Tab)** for browser tabs, where the browser keeps Ctrl+Tab for itself, and for the web UI on a phone, where a tap switches.
 
 The switcher owns Ctrl+Tab and Ctrl+Shift+Tab. A Paseo shortcut bound to either one, such as Next tab, does not fire while the plugin is installed.
 
@@ -61,6 +59,8 @@ Status follows Paseo's sidebar: a turning ring while an agent runs, amber when i
 ## Back and forward
 
 The arrows at the top of the sidebar retrace the places you visited, including the selected session or tab inside a workspace. Open plugin settings from a session, press Back to return to that session, then Forward to revisit the settings page. Closed tabs are skipped; opening something new after going Back clears the forward branch.
+
+![Switching tabs, then workspaces, then opening Settings; Back three times returns through the other workspace to both tabs, and Forward retraces the way to Settings](docs/media/history.gif)
 
 History stays in memory for the current window and starts fresh on reload. It is separate from Ctrl+Tab's recent-workspace order.
 
