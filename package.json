@@ -1,7 +1,7 @@
 {
   "name": "paseo-switcher",
   "type": "module",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "license": "MIT",
   "description": "Ctrl+Tab workspace switching and back/forward navigation through Paseo workspaces, sessions, tabs, plugin pages and Settings.",
   "repository": {
