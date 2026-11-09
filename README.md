@@ -5,7 +5,7 @@
 [![Paseo](https://img.shields.io/badge/Paseo-0.15-8A63D2?style=for-the-badge)](https://paseo.sh)
 [![License](https://img.shields.io/github/license/tomgrin10/paseo-switcher?style=for-the-badge&color=2563eb)](LICENSE)
 
-Arc-style Ctrl+Tab for Paseo workspaces. Hold Ctrl and tap Tab to step through your most recently used workspaces, release Ctrl to switch. A quick Ctrl+Tab flips straight back to the previous workspace without drawing anything. Start typing while it is open to find any workspace by name, project, branch or pull request number.
+Arc-style Ctrl+Tab for Paseo workspaces, plus back/forward navigation through workspaces, sessions, tabs, plugin pages and Settings. Hold Ctrl and tap Tab to step through your most recently used workspaces, release Ctrl to switch. A quick Ctrl+Tab flips straight back to the previous workspace without drawing anything. Start typing while it is open to find any workspace by name, project, branch or pull request number.
 
 ![Holding Ctrl+Tab to browse recent workspaces, releasing to switch, a quick tap back, then typing "search" to find a workspace](docs/media/switcher.gif)
 
@@ -58,9 +58,23 @@ The switcher owns Ctrl+Tab and Ctrl+Shift+Tab. A Paseo shortcut bound to either 
 
 Status follows Paseo's sidebar: a turning ring while an agent runs, amber when it needs input, red when it failed, and green when it finished and you have not looked yet.
 
+## Back and forward
+
+The arrows at the top of the sidebar retrace the places you visited, including the selected session or tab inside a workspace. Open plugin settings from a session, press Back to return to that session, then Forward to revisit the settings page. Closed tabs are skipped; opening something new after going Back clears the forward branch.
+
+History stays in memory for the current window and starts fresh on reload. It is separate from Ctrl+Tab's recent-workspace order.
+
+Mouse side buttons and the Command Center's **Go back** / **Go forward** commands use the same history. The default keyboard shortcuts are **Ctrl+- / Ctrl+Shift+-** on macOS and **Alt+Left / Alt+Right** elsewhere. **Settings → Plugins → Workspace Switcher → Navigation history** changes the shortcut pair (including **Cmd+[ / Cmd+]** or **None**) and hides or shows the arrows. Turn **Back and forward** off to disable the feature entirely: no arrows, shortcuts, mouse side-button handling or Go back / Go forward commands, and no history is recorded. Those keys and buttons then reach Paseo unchanged.
+
+For a Logitech mouse on macOS, if the built-in Back/Forward assignments do nothing, create an app-specific **Paseo** profile in Logi Options+. Assign the side buttons to **Keyboard shortcut → Ctrl+-** and **Ctrl+Shift+-**, and select that same shortcut pair in the plugin. This uses Control, not Command. The plugin also accepts raw mouse buttons and BrowserBack/BrowserForward key events; native macOS commands that never reach the app need the shortcut mapping.
+
+The plugin's navigation code executes inside your local Paseo app even when you install it on a remote host. Back/forward does not make a plugin RPC to that host. Opening uncached workspace content may still require Paseo to load it from the host.
+
+The arrows stay mounted independently of Paseo's routed sidebar and keep their position while a workspace loads. Plugin availability still follows its host installation: replacing the host connection, reloading or disabling the plugin can reinstall or remove its client UI.
+
 ## How it stays fast
 
-A quick tap does no drawing at all, only a click on the previous workspace. The list draws in about 2 ms and does no background work, and filtering redraws it in a few milliseconds per key. Thumbnails are not live copies of the app: in that layout, while you stay in a workspace, the plugin rasterizes a small image of it when the browser is idle, and never during the two seconds after a switch. The strip itself is about 40 elements and draws in a few milliseconds. The end-to-end suite checks these budgets, along with the claim that normal sidebar switching is no slower with the plugin on. See [TESTING.md](TESTING.md).
+A quick tap does no drawing at all, only a click on the previous workspace. The list draws in about 2 ms and takes no thumbnails, and filtering redraws it in a few milliseconds per key. Navigation history observes route and tab changes without watching streamed chat content. Thumbnails are not live copies of the app: in that layout, while you stay in a workspace, the plugin rasterizes a small image of it when the browser is idle, and never during the two seconds after a switch. The strip itself is about 40 elements and draws in a few milliseconds. The end-to-end suite checks these budgets, along with the claim that normal sidebar switching is no slower with the plugin on. See [TESTING.md](TESTING.md).
 
 ## Limits
 

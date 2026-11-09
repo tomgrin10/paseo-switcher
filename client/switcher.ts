@@ -1,4 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { installHistory, type HistoryControls } from "./web";
 import {
   ago,
   buildCards,
@@ -78,6 +79,7 @@ interface Snapshot {
 }
 
 export interface Switcher {
+  history: HistoryControls;
   open(): void;
   getLimit(): number;
   setLimit(limit: number): void;
@@ -89,7 +91,8 @@ export interface Switcher {
 export function installSwitcher(paseo: Paseo): Switcher {
   const doc = g.document;
   const win = g.window;
-  const noop: Switcher = {
+  if (!doc || !win) return {
+    history: installHistory(() => {}),
     open() {},
     getLimit: () => DEFAULT_LIMIT,
     setLimit() {},
@@ -97,12 +100,12 @@ export function installSwitcher(paseo: Paseo): Switcher {
     setLayout() {},
     dispose() {},
   };
-  if (!doc || !win) return noop;
 
   // Each connected host installs the plugin; only one switcher may own the keyboard.
   g.__paseoSwitcher?.dispose();
   // While the switcher is open it owns the keyboard, so typing to filter never fires a Paseo shortcut.
-  const keys = claimKeys(() => open);
+  let history: HistoryControls | undefined;
+  const keys = claimKeys(() => open, (event, key) => history?.matchesKey(event, key) ?? false);
 
   let mru: string[] = readJson(MRU_KEY, []).filter((v: unknown) => typeof v === "string");
   let limit = clampLimit(readJson(LIMIT_KEY, DEFAULT_LIMIT));
@@ -141,6 +144,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
   host.setAttribute("data-paseo-switcher", "");
   host.className = "pws-host";
   doc.body.appendChild(host);
+  history = installHistory(navigate);
 
   // ---- storage --------------------------------------------------------------------------------
 
@@ -963,6 +967,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
   }
 
   function onKeyDown(e: any) {
+    if (!open && history?.handleKey(e, keys.realKey(e))) return;
     if (e.isComposing) return;
     const key = keys.realKey(e);
     if (key === "Tab" && e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1016,6 +1021,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
   void loadWorkspaces();
 
   const api: Switcher = {
+    history,
     open: () => begin("sticky", 1),
     getLimit: () => limit,
     setLimit(next) {
@@ -1029,6 +1035,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
     },
     dispose() {
       close();
+      history?.dispose();
       clearInterval(routeTimer);
       clearInterval(refreshTimer);
       observer.disconnect();
@@ -1056,7 +1063,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
  * otherwise open the Command Center): everyone else reads them as an unidentified key with no
  * code, which matches no shortcut, while the switcher reads the real key through `realKey`.
  */
-function claimKeys(isOpen: () => boolean): { realKey(e: any): string; release(): void } {
+function claimKeys(isOpen: () => boolean, extra: (event: any, key: string) => boolean): { realKey(e: any): string; release(): void } {
   const proto = g.KeyboardEvent?.prototype;
   const get = (name: string) => (proto ? Object.getOwnPropertyDescriptor(proto, name) : undefined);
   const key = get("key");
@@ -1070,6 +1077,7 @@ function claimKeys(isOpen: () => boolean): { realKey(e: any): string; release():
   const claimed = (e: any) => {
     const k = keyOf.call(e);
     if (isOpen()) return !MODIFIERS.has(k);
+    if (extra(e, k)) return true;
     return k === "Tab" && ctrlOf.call(e) && !metaOf.call(e) && !altOf.call(e);
   };
   const hiddenKey = function (this: any) {

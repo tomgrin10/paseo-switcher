@@ -3,7 +3,7 @@
   "type": "module",
   "version": "1.1.0",
   "license": "MIT",
-  "description": "Arc-style Ctrl+Tab workspace switcher for Paseo: your most recent workspaces with full names, branches, pull requests and agent status, and type to find any workspace.",
+  "description": "Ctrl+Tab workspace switching and back/forward navigation through Paseo workspaces, sessions, tabs, plugin pages and Settings.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tomgrin10/paseo-switcher.git"
@@ -32,6 +32,7 @@
     "test": "node --test test/*.test.ts",
     "verify": "npm run typecheck && npm test",
     "e2e": "node test/e2e/run.mjs",
+    "e2e:history": "node test/e2e/history.mjs",
     "media": "node test/e2e/media.mjs"
   },
   "devDependencies": {

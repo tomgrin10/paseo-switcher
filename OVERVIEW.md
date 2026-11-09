@@ -10,12 +10,21 @@ Arc-style workspace switching for the Paseo desktop app. Hold Ctrl and tap Tab t
 
 The Command Center also has **Switch workspace (Ctrl+Tab)**, which opens the same switcher and waits for Enter or a click. Use it in a browser tab, where the browser keeps Ctrl+Tab for itself, or in a phone browser, where a tap switches.
 
+## Back and forward
+
+The arrows at the top of the sidebar move through visited workspaces, sessions, tabs, plugin pages and Settings. Back from plugin settings restores the workspace and selected tab you left. Closed tabs are skipped, and a new visit after Back clears the forward branch. History is kept only for the current window until reload; Ctrl+Tab still uses its own recent-workspace order.
+
+Mouse side buttons and the Command Center's **Go back** and **Go forward** commands also navigate. Keyboard defaults: **Ctrl+- / Ctrl+Shift+-** on macOS, **Alt+Left / Alt+Right** elsewhere.
+
 ## Settings
 
-**Settings → Plugins → Workspace Switcher** has two settings, saved on each device along with the visit order:
+**Settings → Plugins → Workspace Switcher** saves preferences on each device along with the recent-workspace order:
 
-- **Layout**: **List** (the default) shows each workspace's full name, project, branch, pull request and checks, diff stat, unpushed commits, and what its agent is doing and for how long. It takes no thumbnails, so the plugin does no background work at all. **Thumbnails** shows a row of cards with a preview of each workspace instead.
+- **Layout**: **List** (the default) shows each workspace's full name, project, branch, pull request and checks, diff stat, unpushed commits, and what its agent is doing and for how long. It takes no thumbnails. **Thumbnails** shows a row of cards with a preview of each workspace instead.
 - **Workspaces shown**: how many recent workspaces appear, 2 to 9, default 5.
+- **Back and forward**: on by default. Off disables the arrows, shortcuts, mouse side buttons and Go back / Go forward commands, and stops recording history.
+- **Arrows in the sidebar**: show or hide the arrows while keeping the shortcuts, mouse buttons and commands.
+- **Back / forward shortcuts**: choose Alt+Left/Right, Ctrl+- / Ctrl+Shift+-, Cmd+[ / Cmd+], or None.
 
 ## Cards
 

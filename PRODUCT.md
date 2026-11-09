@@ -40,12 +40,13 @@ few workspaces you are juggling. _(inferred)_
 
 ## Capabilities and Constraints
 
-- Speed is the product: nothing runs on a navigation path; budgets are enforced by the end-to-end
+- Speed is the product: navigation observation only schedules work, and never snapshots thumbnails; budgets are enforced by the end-to-end
   suite (quick tap < 5 ms, opening < 30 ms, moving < 5 ms, typing a filter < 30 ms, strip gone
   < 60 ms after release, sidebar switching no slower with the plugin).
 - Thumbnails are rasterized only in idle time and kept in memory; the default list layout does no
   background work.
-- Settings and visit history live in the browser's localStorage per device.
+- Settings and recent-workspace order live in the browser's localStorage per device. Chronological
+  back/forward history stays in window memory and resets on document reload.
 - Does nothing on iOS and Android.
 
 ## Brand Commitments
