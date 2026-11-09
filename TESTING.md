@@ -6,8 +6,11 @@ Two layers:
 | --- | --- | --- |
 | `npm run verify` | Typecheck and unit tests for the ordering logic (`test/model.test.ts`) | Nothing |
 | `npm run e2e` | Behavior and performance in Paseo's real web UI, against your local daemon (`test/e2e/run.mjs`) | A running daemon with this plugin installed |
+| `npm run e2e:history -- --reload` | Back/forward through session tabs, workspaces and plugin settings; mouse, shortcuts, history branching, the off switch and cleanup | A running daemon and a workspace with two open tabs |
 
 Run `npm run e2e -- --reload` before a release. It also reloads the plugin with `paseo plugin reload paseo-switcher` and checks that it cleans up after itself. Add `--headed` to watch the browser if you have a display.
+
+The history suite sends trusted browser Back/Forward mouse events through Chromium's input protocol, plus BrowserBack/BrowserForward key events. It checks that Settings arrows follow their header when native window-control clearance moves it, remain visible at their last position when a sidebar anchor disappears, and never detach or reparent during workspace navigation. These cover browser behavior; physical Logitech hardware and native macOS command delivery need a manual pass on the user's Mac.
 
 ## End-to-end setup
 

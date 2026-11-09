@@ -88,6 +88,7 @@ typography:
     fontSize: "17px"
     fontWeight: 650
 rounded:
+  chrome-button: "6px"
   mark: "3px"
   key: "5px"
   tile: "7px"
@@ -341,7 +342,13 @@ Arrows are ↑↓ in the list and ←→ in the strip. Keycaps are 18px tall, at
 
 ### Settings
 
-The host's Settings section "Switcher" with one card holding two `SettingsSelect` rows: Layout (List / Thumbnails) and Workspaces shown, each with a one-sentence hint. No custom styling.
+The host's Settings section "Switcher" with one card holding two `SettingsSelect` rows: Layout (List / Thumbnails) and Workspaces shown, each with a one-sentence hint. A second section, "Navigation history", holds the Back and forward master switch. While it is on, the same card also shows the Arrows in the sidebar switch and the Back / forward shortcuts selector; off hides both rows. No custom styling.
+
+### Navigation history
+
+Two 16px Lucide-style arrows sit at the right of the sidebar's title bar, above the navigation rows. On plain web, a 36px row supplies that space. Each button has a 28px hit target, a 6px radius matching the host chrome, a neutral hover fill, a visible keyboard focus outline and a tooltip naming its action and shortcut. Disabled arrows fade to 30% opacity. A coarse pointer gets 44px targets.
+
+The toolbar stays mounted at document level and aligns with the sidebar title bar or Settings Back header, below native window controls. A plain-web sidebar spacer and padding on the Settings Back label reserve its space. While routed sidebar elements are unavailable during workspace loading, it keeps the last valid position. Resizing realigns it; compact screens hide it when the sidebar is closed. Colors follow the host sidebar label, including custom themes. Pointer activation happens on press, while keyboard and assistive activation use click. History has no entrance animation.
 
 ### Motion
 

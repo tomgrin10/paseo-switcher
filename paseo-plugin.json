@@ -2,7 +2,7 @@
   "id": "paseo-switcher",
   "name": "Workspace Switcher",
   "icon": "assets/icon.png",
-  "description": "Arc-style Ctrl+Tab workspace switcher: hold Ctrl, tap Tab through your recent workspaces with full names, branches, PRs and agent status, release to switch. Type to find any workspace.",
+  "description": "Ctrl+Tab workspace switching and back/forward navigation through workspaces, sessions, tabs, plugin pages and Settings. Type to find any workspace.",
   "media": [
     "docs/media/switcher.gif",
     "docs/media/switcher-list-dark.png",

@@ -9,9 +9,9 @@
 ## Code boundaries
 
 - `index.client.tsx` wires the settings screen and Command Center entries, and installs the switcher on web and desktop only.
-- `client/model.ts` is pure ordering logic with unit tests. `client/switcher.ts` is the DOM adapter: keyboard handling, the strip, and thumbnails. `client/settings.tsx` is the settings screen.
+- `client/model.ts` is pure ordering logic with unit tests. `client/switcher.ts` is the DOM adapter: keyboard handling, the strip, and thumbnails. `client/history.ts` owns chronological history independently of MRU; `client/web.ts` observes and restores routes and focused tabs and mounts the arrows. `client/settings.tsx` is the settings screen.
 - `client/switcher.ts` reads Paseo's page structure, which is not a public plugin API. Every selector and route it relies on is listed at the top of that file. The plugin is pinned to one Paseo minor version for that reason.
-- Nothing may run on a navigation path. Thumbnail work happens only in idle time, outside the quiet period after a switch. See the performance checks in `TESTING.md`.
+- Navigation observation only schedules work; never snapshot thumbnails or measure layouts on a navigation path. Thumbnail work happens only in idle time, outside the quiet period after a switch. See the performance checks in `TESTING.md`.
 - Paseo supplies the SDK, React, React Native, TanStack Query, and Zod at runtime. Keep those packages in `devDependencies`.
 - Never commit credentials, daemon state, logs, test artifacts, or local paths.
 
