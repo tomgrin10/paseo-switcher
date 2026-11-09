@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Records the README media of the real switcher: two GIFs and four stills.
+// Records the README media of the real switcher: three GIFs and three stills.
 //
-//   E2E_ORIGIN=http://127.0.0.1:<port> PASEO_HOME=<home> npm run media
+//   E2E_ORIGIN=http://127.0.0.1:<port> PASEO_HOME=<home> npm run media [-- list thumbnails history]
+//
+// Name captures to record only those; with none, it records them all.
 //
 // Run it against a throwaway daemon that holds only sample workspaces, named as in SAMPLES below
 // (a `paseo daemon run --home <dir>` with the web UI enabled; TESTING.md has the details). The
@@ -37,7 +39,7 @@ const SAMPLES = [
 ];
 
 /** Runs in the page before the app: adds the samples' details to workspace descriptors from the daemon. */
-function enrich(samples, host) {
+function enrich({ samples, host }) {
   const byName = new Map(samples.map((s) => [s.name, s]));
   const t0 = Date.now();
   const fix = (o) => {
@@ -105,6 +107,47 @@ function keycaps() {
     );
 }
 
+/** Runs in the page. Draws a pointer that follows the mouse and rings each press, since screencasts have none. */
+function cursor() {
+  const install = () => {
+    const arrow = document.createElement("div");
+    arrow.style.cssText = `position: fixed; top: 0; left: 0; width: 22px; height: 26px; pointer-events: none; z-index: 2147483647;
+      opacity: 0; transition: transform 45ms linear, opacity 160ms ease-out;`;
+    arrow.innerHTML = `<svg width="22" height="26" viewBox="0 0 22 26" style="filter: drop-shadow(0 1px 3px rgba(0,0,0,.55))">
+      <path d="M3 2.2 L3 20.4 L7.7 15.9 L10.7 22.9 L13.6 21.7 L10.6 14.8 L17.2 14.4 Z" fill="#fff" stroke="#111" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
+    document.documentElement.appendChild(arrow);
+    let x = -100;
+    let y = -100;
+    const place = (scale) => (arrow.style.transform = `translate(${x}px, ${y}px)${scale ? ` scale(${scale})` : ""}`);
+    addEventListener("mousemove", (e) => {
+      x = e.clientX;
+      y = e.clientY;
+      arrow.style.opacity = "1";
+      place();
+    }, true);
+    addEventListener("mousedown", () => {
+      place(0.85);
+      const ring = document.createElement("div");
+      ring.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+        background: rgba(52, 211, 153, .55); box-shadow: 0 0 0 2px rgba(52, 211, 153, .9); pointer-events: none; z-index: 2147483646;
+        transition: transform 430ms ease-out, opacity 430ms ease-out;`;
+      document.documentElement.appendChild(ring);
+      requestAnimationFrame(() => {
+        ring.style.transform = "scale(3.6)";
+        ring.style.opacity = "0";
+      });
+      setTimeout(() => ring.remove(), 470);
+    }, true);
+    addEventListener("mouseup", () => place(), true);
+    // Workspace hover cards show the checkout's local path; they are not part of any demo.
+    const style = document.createElement("style");
+    style.textContent = '[data-testid="workspace-hover-card"] { display: none !important; }';
+    document.head.appendChild(style);
+  };
+  if (document.head) install();
+  else addEventListener("DOMContentLoaded", install, { once: true });
+}
+
 /** Never publish a capture that could show a real workspace. */
 async function assertSamples(page) {
   const names = SAMPLES.map((s) => s.name);
@@ -113,10 +156,12 @@ async function assertSamples(page) {
   if (stray !== undefined) throw new Error(`Refusing to write the capture: "${stray}" is not a sample workspace`);
 }
 
-async function prepare(browser, { scheme = "dark", layout = "list", width = 1440, height = 900 } = {}) {
+async function prepare(browser, { scheme = "dark", layout = "list", width = 1440, height = 900, pointer = false } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, deviceScaleFactor: 2, reducedMotion: "no-preference" });
   await authenticate(context).catch(() => {});
-  await context.addInitScript(enrich, SAMPLES, hostname());
+  // addInitScript passes a single argument to the page function.
+  await context.addInitScript(enrich, { samples: SAMPLES, host: hostname() });
+  if (pointer) await context.addInitScript(cursor);
   await context.addInitScript((layout) => {
     try {
       localStorage.setItem("paseo-switcher:layout", JSON.stringify(layout));
@@ -185,8 +230,23 @@ async function still(page, file, pad = 40) {
   console.log(`Wrote ${file}`);
 }
 
-/** Records frames while `script` runs, then encodes a GIF. */
-async function record(context, page, file, script) {
+/** The machine's name must never be on screen; enrich swaps it for "dev-box". */
+async function assertNoHostname(page) {
+  const host = hostname();
+  const text = await page.evaluate(() => document.body.innerText);
+  for (const name of [host, host.split(".")[0]]) if (text.includes(name)) throw new Error(`Refusing to write the capture: the page shows the host name "${name}"`);
+}
+
+/** Every sidebar workspace row must be a sample before a whole-window capture. */
+async function assertSidebarSamples(page) {
+  const names = SAMPLES.map((s) => s.name);
+  const shown = await page.$$eval('[data-testid^="sidebar-workspace-row-"]', (rows) => rows.map((r) => r.innerText.split("\n")[0].trim()));
+  const stray = shown.find((name) => !names.includes(name));
+  if (stray !== undefined) throw new Error(`Refusing to write the capture: "${stray}" is not a sample workspace`);
+}
+
+/** Records frames while `script` runs, then encodes a GIF of `size` (the viewport for history, 1200x750 otherwise). */
+async function record(context, page, file, script, size) {
   await page.evaluate(keycaps);
   await page.waitForTimeout(1500);
   const frames = [];
@@ -198,12 +258,12 @@ async function record(context, page, file, script) {
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: 1440, maxHeight: 900 });
   const wait = (ms) => page.waitForTimeout(ms);
   const show = (...keys) => page.evaluate((keys) => window.showKeys(keys), keys);
-  await script({ wait, show, keyboard: page.keyboard, check: () => assertSamples(page) });
+  await script({ page, wait, show, keyboard: page.keyboard, check: () => assertSamples(page) });
   await cdp.send("Page.stopScreencast");
-  await encode(frames, file);
+  await encode(frames, file, size);
 }
 
-async function encode(frames, file) {
+async function encode(frames, file, { width = 1200, height = 750 } = {}) {
   const delays = frames.map((f, i) => Math.max(0.04, (frames[i + 1]?.at ?? f.at + 1.2) - f.at));
   const ffmpeg = process.env.FFMPEG ?? "ffmpeg";
   if (spawnSync(ffmpeg, ["-version"], { stdio: "ignore" }).status === 0) {
@@ -214,14 +274,12 @@ async function encode(frames, file) {
       return `file '${path}'\nduration ${delays[i].toFixed(3)}`;
     });
     writeFileSync(join(dir, "frames.txt"), `${list.join("\n")}\nfile '${join(dir, `${String(frames.length - 1).padStart(5, "0")}.jpg`)}'\n`);
-    const filters = "fps=15,scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle";
+    const filters = `fps=15,scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle`;
     const result = spawnSync(ffmpeg, ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", join(dir, "frames.txt"), "-vf", filters, "-loop", "0", file], { stdio: "inherit" });
     rmSync(dir, { recursive: true, force: true });
     if (result.status !== 0) throw new Error(`ffmpeg failed to encode ${file}`);
   } else if (process.env.SHARP) {
     const sharp = createRequire(join(resolve(process.env.SHARP), "package.json"))("sharp");
-    const width = 1200;
-    const height = 750;
     // About 15 frames a second: merge frames that arrive faster into the one before.
     const kept = [];
     for (const [i, f] of frames.entries()) {
@@ -310,6 +368,49 @@ async function stripDemo(k) {
   await wait(1800);
 }
 
+/**
+ * Back and forward: change tab, change workspace, open Settings, then Back three times to the first
+ * tab and Forward to Settings again. Starts in "Checkout redesign" on its first tab.
+ */
+async function historyDemo({ page, wait }) {
+  const press = async (locator, settle = 500) => {
+    const box = await locator.boundingBox({ timeout: 3000 });
+    const view = page.viewportSize();
+    if (!box || box.y < 0 || box.y + box.height > view.height) throw new Error(`Not on screen: ${locator}`);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 16 });
+    await wait(settle);
+    await page.mouse.down();
+    await page.mouse.up();
+  };
+  const tab = (title) => page.locator('[data-testid^="workspace-tab-"]', { hasText: title }).filter({ visible: true }).first();
+  const row = (name) => page.locator('[data-testid^="sidebar-workspace-row-"]', { hasText: name }).first();
+  const back = page.getByTestId("pws-history-back");
+  const forward = page.getByTestId("pws-history-forward");
+  await wait(500);
+  await press(tab("Write the payment tests"));
+  await wait(900);
+  await press(row("Onboarding emails"));
+  await wait(1000);
+  await press(page.getByTestId("sidebar-settings"));
+  await wait(1100);
+  await assertNoHostname(page);
+  await press(back, 700);
+  await wait(1100);
+  await press(back, 350);
+  await wait(1100);
+  await press(back, 350);
+  await wait(1300);
+  await press(forward, 500);
+  await wait(800);
+  await press(forward, 350);
+  await wait(800);
+  await press(forward, 350);
+  await wait(1100);
+  await assertNoHostname(page);
+  await page.mouse.move(900, 330, { steps: 16 });
+  await wait(900);
+}
+
 async function hold(page) {
   await page.keyboard.down("Control");
   await page.keyboard.press("Tab");
@@ -322,38 +423,50 @@ async function release(page) {
   await page.waitForTimeout(300);
 }
 
+const only = process.argv.slice(2);
+const wanted = (name) => only.length === 0 || only.includes(name);
 mkdirSync(OUT, { recursive: true });
 const server = await startWebUi();
 const browser = await chromium.launch();
 try {
-  for (const scheme of ["dark", "light"]) {
-    const { context, page } = await prepare(browser, { scheme });
-    await hold(page);
-    await still(page, join(OUT, `switcher-list-${scheme}.png`));
-    await release(page);
-    if (scheme === "dark") {
+  if (wanted("list")) {
+    for (const scheme of ["dark", "light"]) {
+      const { context, page } = await prepare(browser, { scheme });
       await hold(page);
-      await page.keyboard.type("api");
-      await page.waitForTimeout(400);
-      await still(page, join(OUT, "switcher-filter-dark.png"));
+      await still(page, join(OUT, `switcher-list-${scheme}.png`));
       await release(page);
-      await record(context, page, join(OUT, "switcher.gif"), listDemo);
+      if (scheme === "dark") {
+        await hold(page);
+        await page.keyboard.type("api");
+        await page.waitForTimeout(400);
+        await still(page, join(OUT, "switcher-filter-dark.png"));
+        await release(page);
+        await record(context, page, join(OUT, "switcher.gif"), listDemo);
+      }
+      await context.close();
     }
-    await context.close();
   }
-  {
+  if (wanted("thumbnails")) {
     const { context, page } = await prepare(browser, { layout: "strip" });
     await record(context, page, join(OUT, "switcher-thumbnails.gif"), stripDemo);
     await context.close();
   }
-  {
-    // A phone browser has no Ctrl+Tab; Switch workspace in the Command Center opens the same list.
-    const { context, page } = await prepare(browser, { width: 390, height: 844 });
-    await page.evaluate(() => window.__paseoSwitcher.open());
-    await page.waitForTimeout(800);
-    await assertSamples(page);
-    await page.screenshot({ path: join(OUT, "switcher-phone-dark.png") });
-    console.log(`Wrote ${join(OUT, "switcher-phone-dark.png")}`);
+  if (wanted("history")) {
+    // A smaller window than the switcher GIFs, recorded 1:1, so the 16px arrows stay legible.
+    const size = { width: 1200, height: 750 };
+    const { context, page } = await prepare(browser, { ...size, pointer: true });
+    await page.waitForSelector('[data-testid="pws-history"]');
+    // prepare ends in "Checkout redesign". Load its second tab once so the take shows no spinner,
+    // then start the take on its first tab.
+    const tabNamed = (title) => page.locator('[data-testid^="workspace-tab-"]', { hasText: title }).filter({ visible: true }).first();
+    await tabNamed("Write the payment tests").click();
+    await page.waitForTimeout(2500);
+    await tabNamed("Plan the new checkout").click();
+    await page.waitForTimeout(1500);
+    await page.mouse.move(900, 330);
+    await assertSidebarSamples(page);
+    await assertNoHostname(page);
+    await record(context, page, join(OUT, "history.gif"), historyDemo, size);
     await context.close();
   }
 } finally {

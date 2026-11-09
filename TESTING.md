@@ -133,6 +133,6 @@ P10 and P11 read the `pws:snapshot`, `pws:serialize` (with its `pws:xml` and `pw
 
 ## README media
 
-`npm run media` records `docs/media/switcher.gif` (list layout: browse, release, quick tap back, type to filter), `switcher-thumbnails.gif`, and stills of the list in dark and light, a filter, and the phone layout, from the real plugin.
+`npm run media` records `docs/media/switcher.gif` (list layout: browse, release, quick tap back, type to filter), `switcher-thumbnails.gif`, `history.gif` (back and forward through tabs, workspaces and Settings, with a drawn pointer), and stills of the list in dark and light and a filter, from the real plugin. Name captures to record only those: `npm run media -- history`. The history capture also needs two agent tabs in "Checkout redesign", titled "Plan the new checkout" and "Write the payment tests".
 
 Run it against a throwaway daemon (see [Against an isolated daemon](#against-an-isolated-daemon)) whose workspaces are named as in `SAMPLES` in `test/e2e/media.mjs`. The script adds each sample's pull request, checks, review, diff stat and status to the daemon's messages inside the page, replaces the machine's host name, and refuses to write anything if a row or card shows a name that is not a sample. It encodes GIFs with ffmpeg (`PATH` or `FFMPEG`), or with sharp when `SHARP` names a directory that can require it.
