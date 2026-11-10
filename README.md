@@ -90,7 +90,7 @@ A quick tap does no drawing at all, only a click on the previous workspace. The 
 npm ci
 npm run verify                  # typecheck and unit tests
 paseo plugin install .
-npm run e2e -- --reload         # behavior and performance against your local daemon
+npm run e2e -- --reload         # behavior and performance against a throwaway daemon (see TESTING.md)
 npm run media                   # README media, against a daemon with sample workspaces
 ```
 

@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright-core";
-import { authenticate, ORIGIN, paseoArgs, startWebUi } from "./browser.mjs";
+import { authenticate, ORIGIN, paseoArgs } from "./browser.mjs";
 
-const server = await startWebUi();
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 await authenticate(context);
@@ -381,5 +380,4 @@ try {
   throw error;
 } finally {
   await browser.close();
-  server.close();
 }
