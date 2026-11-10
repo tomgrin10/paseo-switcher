@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { authenticate, ORIGIN, paseoArgs, PORT, startWebUi } from "./browser.mjs";
+import { authenticate, ORIGIN, paseoArgs } from "./browser.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ARTIFACTS = resolve(HERE, "../artifacts");
@@ -132,11 +132,12 @@ async function behavior(page, visited) {
   check("B2", "Holding Ctrl+Tab shows the 5 most recent workspaces", s.open && JSON.stringify(s.cards) === JSON.stringify(m0.slice(0, 5)), s);
   check("B3", "The previous workspace is preselected", s.selected === 1, s.selected);
   check("B4", "Thumbnails are rasterized canvases", s.canvases >= 4, s.canvases);
-  // Canvases cannot be read back (the SVG taints them), so judge the pixels from a screenshot:
-  // a blank thumbnail compresses to a tiny PNG, a real one to several kilobytes.
-  const sizes = [];
-  for (const canvas of await page.locator(".pws-root canvas").all()) sizes.push((await canvas.screenshot()).length);
-  check("B4b", "Thumbnails show content, not a blank image", sizes.length >= 4 && sizes.every((n) => n > 3000), { pngBytes: sizes });
+  // Canvases cannot be read back (the SVG taints them), so screenshot each one and decode the PNG
+  // in the page. Not blank means some pixels differ from the background, the most common colour.
+  // A byte-size threshold failed on nearly empty pages, whose real thumbnails compress small.
+  const thumbs = [];
+  for (const canvas of await page.locator(".pws-root canvas").all()) thumbs.push(await inkOf(page, await canvas.screenshot()));
+  check("B4b", "Thumbnails show content, not a blank image", thumbs.length >= 4 && thumbs.every((t) => t.decoded && t.ink >= MIN_INK), thumbs);
   await page.screenshot({ path: join(ARTIFACTS, "strip-light.png") });
 
   for (let i = 0; i < 5; i++) await page.keyboard.press("Tab");
@@ -744,13 +745,45 @@ async function reloadCleanup(page) {
   check("R2", "After a reload the switcher still claims Ctrl+Tab", key === "Unidentified", key);
 }
 
+// ---- thumbnail pixels ------------------------------------------------------------------------------
+
+/** Share of pixels a thumbnail needs off its background colour: a few words of text on a 240px card. */
+const MIN_INK = 0.002;
+
+/** Decodes a PNG in the page: its size, and the share of pixels that differ from the most common colour. */
+function inkOf(page, png) {
+  return page.evaluate(async (base64) => {
+    try {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(bitmap, 0, 0);
+      const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      const counts = new Map();
+      for (let i = 0; i < data.length; i += 4) {
+        const key = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      let bg = 0, best = -1;
+      for (const [key, n] of counts) if (n > best) [bg, best] = [key, n];
+      const [r, g, b] = [bg >> 16, (bg >> 8) & 255, bg & 255];
+      let ink = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (Math.max(Math.abs(data[i] - r), Math.abs(data[i + 1] - g), Math.abs(data[i + 2] - b)) > 24) ink++;
+      }
+      const pixels = data.length / 4;
+      return { decoded: pixels > 0, width: bitmap.width, height: bitmap.height, ink: pixels ? Number((ink / pixels).toFixed(4)) : 0 };
+    } catch (e) {
+      return { decoded: false, error: String(e) };
+    }
+  }, png.toString("base64"));
+}
+
 // ---- main ------------------------------------------------------------------------------------------
 
 async function main() {
   mkdirSync(ARTIFACTS, { recursive: true });
-  const server = await startWebUi().catch((e) => {
-    throw new Error(`Cannot serve the web UI on ${ORIGIN} (${e.code ?? e.message}). Stop whatever uses port ${PORT}.`);
-  });
   const browser = await chromium.launch({ headless: !ARGS.has("--headed") });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light" });
   await authenticate(context);
@@ -788,7 +821,6 @@ async function main() {
     check("E1", "No page errors from the plugin", ours.length === 0, ours);
   } finally {
     await browser.close();
-    server.close();
   }
   writeFileSync(join(ARTIFACTS, "results.json"), JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
   const failed = results.filter((r) => r.status === "FAIL");

@@ -1,51 +1,38 @@
-// Shared setup for the browser scripts: serve Paseo's web UI locally and log a fresh browser in.
+// Shared setup for the browser scripts: refuse anything but a throwaway daemon, and log a fresh browser in.
 
-import { execFileSync } from "node:child_process";
-import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { createServer } from "node:http";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { isolationProblem } from "./isolation.mjs";
 
-export const PORT = Number(process.env.E2E_PORT ?? 8787);
-/**
- * Set E2E_ORIGIN to a daemon that serves its own web UI (an isolated test daemon with the web UI
- * enabled, say) to use it directly instead of serving the installed CLI's copy on PORT.
- */
-export const ORIGIN = process.env.E2E_ORIGIN ?? `http://127.0.0.1:${PORT}`;
-/** Written by the running daemon; local clients can authenticate with it instead of the password. */
-const CREDENTIAL = join(process.env.PASEO_HOME ?? join(homedir(), ".paseo"), "local-credential");
-
-// ---- the web UI, served from the installed Paseo CLI -------------------------------------------
-
-export function findWebUi() {
-  if (process.env.PASEO_WEB_UI) return process.env.PASEO_WEB_UI;
-  const bin = realpathSync(execFileSync("which", ["paseo"]).toString().trim());
-  const dir = resolve(dirname(bin), "../node_modules/@getpaseo/server/dist/server/web-ui");
-  if (!existsSync(join(dir, "index.html"))) throw new Error(`Paseo web UI not found at ${dir}; set PASEO_WEB_UI`);
-  return dir;
-}
-
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".ttf": "font/ttf", ".woff2": "font/woff2" };
-/** Serves the web UI on PORT, unless E2E_ORIGIN points at a daemon that serves it. Resolves to a closable server. */
-export async function startWebUi() {
-  if (process.env.E2E_ORIGIN) return { close() {} };
-  return serve(findWebUi());
-}
-
-/** `paseo` arguments for the daemon under test: PASEO_HOME selects an isolated one. */
-export function paseoArgs(...args) {
-  return process.env.PASEO_HOME ? ["--home", process.env.PASEO_HOME, ...args] : args;
-}
-
-export function serve(root) {
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent(new URL(req.url, ORIGIN).pathname);
-    let file = join(root, path);
-    if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) file = join(root, "index.html");
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
-    createReadStream(file).pipe(res);
+// Every browser script imports this module, so this one check keeps all of them off your own daemon.
+{
+  const problem = isolationProblem({
+    env: process.env,
+    userHome: homedir(),
+    realpath: (path) => (existsSync(path) ? realpathSync(path) : resolve(path)),
+    readConfig: (home) => {
+      try {
+        return JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
+      } catch {
+        return null;
+      }
+    },
   });
-  return new Promise((ok, fail) => server.once("error", fail).listen(PORT, "127.0.0.1", () => ok(server)));
+  if (problem) {
+    console.error(problem);
+    process.exit(2);
+  }
+}
+
+/** The throwaway daemon's web UI. The isolation check above guarantees it is set. */
+export const ORIGIN = process.env.E2E_ORIGIN.replace(/\/$/, "");
+/** Written by the running daemon; local clients can authenticate with it instead of the password. */
+const CREDENTIAL = join(process.env.PASEO_HOME, "local-credential");
+
+/** `paseo` arguments for the daemon under test, always the isolated one in PASEO_HOME. */
+export function paseoArgs(...args) {
+  return ["--home", process.env.PASEO_HOME, ...args];
 }
 
 // ---- connecting a fresh browser to the daemon ------------------------------------------------------

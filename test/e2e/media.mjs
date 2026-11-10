@@ -20,7 +20,7 @@ import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { authenticate, ORIGIN, startWebUi } from "./browser.mjs";
+import { authenticate, ORIGIN } from "./browser.mjs";
 
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), "../../docs/media");
 const H = 3600e3;
@@ -426,7 +426,6 @@ async function release(page) {
 const only = process.argv.slice(2);
 const wanted = (name) => only.length === 0 || only.includes(name);
 mkdirSync(OUT, { recursive: true });
-const server = await startWebUi();
 const browser = await chromium.launch();
 try {
   if (wanted("list")) {
@@ -471,5 +470,4 @@ try {
   }
 } finally {
   await browser.close();
-  server.close();
 }

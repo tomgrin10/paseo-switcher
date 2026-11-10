@@ -5,8 +5,8 @@ Two layers:
 | Command | What it covers | Needs |
 | --- | --- | --- |
 | `npm run verify` | Typecheck and unit tests for the ordering logic (`test/model.test.ts`) | Nothing |
-| `npm run e2e` | Behavior and performance in Paseo's real web UI, against your local daemon (`test/e2e/run.mjs`) | A running daemon with this plugin installed |
-| `npm run e2e:history -- --reload` | Back/forward through session tabs, workspaces and plugin settings; mouse, shortcuts, history branching, the off switch and cleanup | A running daemon and a workspace with two open tabs |
+| `npm run e2e` | Behavior and performance in Paseo's real web UI, against a throwaway daemon (`test/e2e/run.mjs`) | A throwaway daemon with this plugin installed (see below) |
+| `npm run e2e:history -- --reload` | Back/forward through session tabs, workspaces and plugin settings; mouse, shortcuts, history branching, the off switch and cleanup | The same throwaway daemon, with a workspace that has two open tabs |
 
 Run `npm run e2e -- --reload` before a release. It also reloads the plugin with `paseo plugin reload paseo-switcher` and checks that it cleans up after itself. Add `--headed` to watch the browser if you have a display.
 
@@ -14,31 +14,18 @@ The history suite sends trusted browser Back/Forward mouse events through Chromi
 
 ## End-to-end setup
 
-The suite serves the web UI bundled with your installed Paseo CLI on `http://127.0.0.1:8787` and drives it with headless Chromium through `playwright-core`.
+The browser suites reset this plugin's history and limit, open workspaces and reload the plugin, so they run only against a throwaway daemon. Every suite refuses to start (exit code 2) unless `PASEO_HOME` names a daemon home other than `~/.paseo` and `E2E_ORIGIN` is a loopback URL on that daemon's port. `test/e2e/isolation.mjs` holds the rule, and `test/isolation.test.ts` tests it.
 
-1. **The daemon must allow that origin.** `http://127.0.0.1:8787` must be in `daemon.cors.allowedOrigins` in `~/.paseo/config.json`. To check, run the following; `101` means it's allowed and `403` means it isn't:
+1. **Start a throwaway daemon** that serves its own web UI: `paseo daemon run --home <dir>`, with `pluginsEnabled`, `features.webUi.enabled` and a `daemon.listen` port other than your own daemon's in `<dir>/config.json`.
+2. **Install this checkout** into it: `paseo --home <dir> plugin install .`
+3. **Create at least 7 workspaces** there. The suite opens some of them and switches between them. It never sends messages, edits drafts or changes workspaces. K2 also needs a workspace with two agent tabs among the first 10; without one it is skipped.
+4. **Point the suite at it:**
 
    ```sh
-   curl -sS -o /dev/null -w '%{http_code}\n' -m 3 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
-     -H 'Sec-WebSocket-Version: 13' -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
-     -H 'Origin: http://127.0.0.1:8787' http://127.0.0.1:6767/ws
+   E2E_ORIGIN=http://127.0.0.1:<its port> PASEO_HOME=<dir> npm run e2e -- --reload
    ```
 
-2. **The daemon must be running locally.** No password is needed. The suite logs in the way the desktop app does, with the token the daemon writes to `~/.paseo/local-credential` at startup (or `$PASEO_HOME/local-credential`). It adds that token to the web UI's hello message from inside the page, so nothing is saved to disk and nothing slows the performance checks.
-
-3. **Port 8787 must be free.** Stop any other server on it first.
-
-4. **You need at least 7 workspaces** in the sidebar. The suite opens some of them and switches between them. It never sends messages, edits drafts, or changes workspaces. It does reset this plugin's own history and limit in the test browser, which is separate from your desktop app.
-
-### Against an isolated daemon
-
-To keep your own daemon and workspaces out of it, run a throwaway daemon with the web UI enabled (`paseo daemon run --home <dir>`, with `features.webUi.enabled` and plugins on in its `config.json`), install this checkout into it with `paseo --home <dir> plugin install .`, create at least 7 workspaces, and point the suite at it:
-
-```sh
-E2E_ORIGIN=http://127.0.0.1:<its port> PASEO_HOME=<dir> npm run e2e -- --reload
-```
-
-`E2E_ORIGIN` makes the suite use the web UI that daemon serves instead of serving one on 8787, and `PASEO_HOME` makes `--reload` reload the plugin there. A daemon without a password needs no credential.
+   The suite logs in the way the desktop app does, with the token the daemon writes to `<dir>/local-credential`, so a password-protected daemon works too.
 
 A Chromium build matching `playwright-core` must be in `~/.cache/ms-playwright`. If it's missing, install it with `npx playwright-core install chromium-headless-shell`.
 
@@ -135,4 +122,4 @@ P10 and P11 read the `pws:snapshot`, `pws:serialize` (with its `pws:xml` and `pw
 
 `npm run media` records `docs/media/switcher.gif` (list layout: browse, release, quick tap back, type to filter), `switcher-thumbnails.gif`, `history.gif` (back and forward through tabs, workspaces and Settings, with a drawn pointer), and stills of the list in dark and light and a filter, from the real plugin. Name captures to record only those: `npm run media -- history`. The history capture also needs two agent tabs in "Checkout redesign", titled "Plan the new checkout" and "Write the payment tests".
 
-Run it against a throwaway daemon (see [Against an isolated daemon](#against-an-isolated-daemon)) whose workspaces are named as in `SAMPLES` in `test/e2e/media.mjs`. The script adds each sample's pull request, checks, review, diff stat and status to the daemon's messages inside the page, replaces the machine's host name, and refuses to write anything if a row or card shows a name that is not a sample. It encodes GIFs with ffmpeg (`PATH` or `FFMPEG`), or with sharp when `SHARP` names a directory that can require it.
+Run it against a throwaway daemon (see [End-to-end setup](#end-to-end-setup)) whose workspaces are named as in `SAMPLES` in `test/e2e/media.mjs`. The script adds each sample's pull request, checks, review, diff stat and status to the daemon's messages inside the page, replaces the machine's host name, and refuses to write anything if a row or card shows a name that is not a sample. It encodes GIFs with ffmpeg (`PATH` or `FFMPEG`), or with sharp when `SHARP` names a directory that can require it.
