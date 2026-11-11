@@ -70,3 +70,13 @@ test("a remove, or an upsert into archiving, drops the workspace", () => {
   const archiving = applyWorkspaceUpdate(before, { kind: "upsert", workspace: descriptor({ id: "w2", archivingAt: "2026-11-11T10:00:00Z" }) });
   assert.deepEqual([...archiving.keys()], ["w1"]);
 });
+
+test("while drawn, fresh data updates rows in place and keeps their order", async () => {
+  const { keepOrder } = await import("../client/model.ts");
+  const card = (id: string, status = "done") => ({ key: `s:${id}`, serverId: "s", workspaceId: id, info: { status } as never });
+  const shown = [card("a"), card("b"), card("c")];
+  const fresh = [card("c", "failed"), card("a"), card("b")];
+  assert.deepEqual(keepOrder(shown, fresh).map((c) => [c.workspaceId, (c.info as any).status]), [["a", "done"], ["b", "done"], ["c", "failed"]]);
+  // A removed workspace drops out; a new one is appended at the end.
+  assert.deepEqual(keepOrder(shown, [card("b"), card("d"), card("a")]).map((c) => c.workspaceId), ["a", "b", "d"]);
+});

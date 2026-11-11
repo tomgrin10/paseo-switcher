@@ -18,6 +18,7 @@ import {
   workspaceKey,
   wrap,
   applyWorkspaceUpdate,
+  keepOrder,
   workspaceMap,
   type Card,
   type Layout,
@@ -573,7 +574,9 @@ export function installSwitcher(paseo: Paseo): Switcher {
     if (!root) return;
     const selected = cards[index]?.key;
     const before = cards.length;
+    const shown = cards;
     refreshCards();
+    if (!query && before) cards = keepOrder(shown, cards);
     const kept = cards.findIndex((c) => c.key === selected);
     // A list that was empty while loading starts like a fresh open: on the previous workspace.
     index = kept >= 0 ? kept : before === 0 && !query ? initialIndex(cards, currentKey()) : Math.max(0, Math.min(index, cards.length - 1));

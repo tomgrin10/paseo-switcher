@@ -301,3 +301,14 @@ export function applyWorkspaceUpdate(map: ReadonlyMap<string, WorkspaceInfo>, up
   else next.delete(id);
   return next;
 }
+
+/**
+ * Fresh cards in the order already on screen, so number keys and the row under the pointer don't
+ * move while the switcher is open. Gone workspaces drop out; new ones go to the end.
+ */
+export function keepOrder(shown: readonly Card[], fresh: readonly Card[]): Card[] {
+  const byKey = new Map(fresh.map((c) => [c.key, c]));
+  const kept = shown.flatMap((c) => byKey.get(c.key) ?? []);
+  const seen = new Set(kept.map((c) => c.key));
+  return [...kept, ...fresh.filter((c) => !seen.has(c.key))];
+}
