@@ -17,6 +17,8 @@
 
 ## Verification and release
 
+- Releases need Tom's manual permission. Features and fixes ship as betas by default. A stable version, npm `latest`, or a hotfix needs Tom's explicit OK for that exact version before it is tagged; never infer it from a plan. For this directory-installed plugin, installing merged main on Tom's VM counts as a beta.
+- Pull requests and `main` run `npm run verify` and `npm pack --dry-run` in CI (`.github/workflows/verify.yml`). Check them with `gh pr checks`.
 - Run `npm ci`, `npm run verify`, and `npm pack --dry-run` after changes. Run `npm run e2e -- --reload` against a throwaway daemon before a release (see `TESTING.md`). The browser suites refuse to run against your own daemon.
 - Do not restart the Paseo daemon. Use `paseo plugin reload paseo-switcher` for an installed development copy.
 - Publish only from a clean `main`, after confirming the packed file list and auditing it for secrets.
