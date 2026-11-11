@@ -200,3 +200,115 @@ export function matchRanges(text: string, query: string): Array<[number, number]
   }
   return merged;
 }
+
+// ---- workspace data ---------------------------------------------------------------------------
+
+type Bucket = WorkspaceInfo["status"];
+const BUCKETS: ReadonlySet<string> = new Set<Bucket>(["needs_input", "failed", "running", "attention", "done"]);
+
+/** The fields of Paseo's workspace descriptor (`paseo.workspaces.list`) the switcher reads. */
+export interface WorkspaceDescriptor {
+  id: string;
+  name: string;
+  projectDisplayName: string;
+  /** The daemon's aggregated bucket across the workspace's agents and terminals. */
+  status: Bucket;
+  /**
+   * Paseo's sidebar indicator, when a source provides it (0.16 client state). It is `status`
+   * except that a "done" workspace reads "running" while a create is pending in that client.
+   */
+  indicator?: Bucket | null;
+  archivingAt?: string | null;
+  background?: boolean | null;
+  activityAt?: string | null;
+  lastUserMessageAt?: string | null;
+  statusEnteredAt?: string | null;
+  createdAt?: string | null;
+  diffStat?: { additions: number; deletions: number } | null;
+  gitRuntime?: { currentBranch?: string | null; aheadOfOrigin?: number | null } | null;
+  githubRuntime?: {
+    pullRequest?: {
+      number?: number | null;
+      state: string;
+      isDraft?: boolean | null;
+      isMerged?: boolean | null;
+      checksStatus?: PullRequestInfo["checks"] | null;
+      reviewDecision?: PullRequestInfo["review"] | null;
+    } | null;
+  } | null;
+}
+
+export type WorkspaceUpdate =
+  | { kind: "upsert"; workspace: WorkspaceDescriptor }
+  | { kind: "remove"; id: string };
+
+/** The latest of several ISO times, in ms; 0 when none is set. */
+export function latest(...times: Array<string | null | undefined>): number {
+  let best = 0;
+  for (const time of times) {
+    const at = time ? Date.parse(time) : 0;
+    if (at > best) best = at;
+  }
+  return best;
+}
+
+/**
+ * One workspace as the switcher shows it, or null when it can't be switched to. The status is the
+ * host's own bucket, never derived here, so the switcher and Paseo's sidebar can't disagree.
+ */
+export function toWorkspaceInfo(w: WorkspaceDescriptor): WorkspaceInfo | null {
+  if (w.archivingAt || w.background) return null;
+  const pr = w.githubRuntime?.pullRequest;
+  const bucket = w.indicator ?? w.status;
+  return {
+    id: w.id,
+    name: w.name,
+    project: w.projectDisplayName,
+    branch: w.gitRuntime?.currentBranch ?? null,
+    status: BUCKETS.has(bucket) ? bucket : "done",
+    additions: w.diffStat?.additions ?? 0,
+    deletions: w.diffStat?.deletions ?? 0,
+    // The sidebar's own time; idle workspaces may have none, so fall back to the latest one known.
+    activityAt: latest(w.activityAt) || latest(w.lastUserMessageAt, w.statusEnteredAt, w.createdAt),
+    statusAt: latest(w.statusEnteredAt),
+    ahead: w.gitRuntime?.aheadOfOrigin ?? 0,
+    pr: pr
+      ? {
+          number: pr.number ?? null,
+          state: pr.isMerged ? "merged" : pr.isDraft ? "draft" : pr.state.toLowerCase() === "open" ? "open" : "closed",
+          checks: pr.checksStatus ?? "none",
+          review: pr.reviewDecision ?? null,
+        }
+      : null,
+  };
+}
+
+export function workspaceMap(entries: readonly WorkspaceDescriptor[]): Map<string, WorkspaceInfo> {
+  const map = new Map<string, WorkspaceInfo>();
+  for (const w of entries) {
+    const info = toWorkspaceInfo(w);
+    if (info) map.set(info.id, info);
+  }
+  return map;
+}
+
+/** A pushed workspace update applied to a copy of the map. */
+export function applyWorkspaceUpdate(map: ReadonlyMap<string, WorkspaceInfo>, update: WorkspaceUpdate): Map<string, WorkspaceInfo> {
+  const next = new Map(map);
+  const id = update.kind === "upsert" ? update.workspace.id : update.id;
+  const info = update.kind === "upsert" ? toWorkspaceInfo(update.workspace) : null;
+  if (info) next.set(id, info);
+  else next.delete(id);
+  return next;
+}
+
+/**
+ * Fresh cards in the order already on screen, so number keys and the row under the pointer don't
+ * move while the switcher is open. Gone workspaces drop out; new ones go to the end.
+ */
+export function keepOrder(shown: readonly Card[], fresh: readonly Card[]): Card[] {
+  const byKey = new Map(fresh.map((c) => [c.key, c]));
+  const kept = shown.flatMap((c) => byKey.get(c.key) ?? []);
+  const seen = new Set(kept.map((c) => c.key));
+  return [...kept, ...fresh.filter((c) => !seen.has(c.key))];
+}
