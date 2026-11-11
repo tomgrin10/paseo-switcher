@@ -17,9 +17,13 @@ import {
   touch,
   workspaceKey,
   wrap,
+  applyWorkspaceUpdate,
+  workspaceMap,
   type Card,
   type Layout,
+  type WorkspaceDescriptor,
   type WorkspaceInfo,
+  type WorkspaceUpdate,
 } from "./model";
 
 /* Desktop/web adapter for Paseo 0.15. Host DOM is not a public plugin API, so every selector and
@@ -191,41 +195,55 @@ export function installSwitcher(paseo: Paseo): Switcher {
 
   // ---- workspace data -------------------------------------------------------------------------
 
+  // A live subscription keeps statuses current while the switcher is closed, so opening it never
+  // waits on or shows a stale list. If the host refuses it, opening falls back to a fresh list.
+  const LIST = { page: { limit: 200 }, sort: [{ key: "activity_at" as const, direction: "desc" as const }] };
+  let live = false;
+  let disposed = false;
+  let releaseFeed: (() => void) | null = null;
+
+  /** `full` is a whole list (first load, reconnect); a pushed update changes one workspace. */
+  function setWorkspaces(next: Map<string, WorkspaceInfo>, full: boolean) {
+    workspaces = next;
+    workspacesAt = Date.now();
+    if (full && !homeServer) homeServer = findHost(next);
+    rerender();
+  }
+
+  function watchWorkspaces() {
+    paseo.workspaces
+      .list({ ...LIST, subscribe: {} })
+      .then(({ entries, subscription }) => {
+        if (disposed) return void subscription.release();
+        setWorkspaces(workspaceMap(entries as WorkspaceDescriptor[]), true);
+        live = true;
+        const stop = subscription.subscribe({
+          // Also after a reconnect: the whole list again.
+          snapshot: (snap) => setWorkspaces(workspaceMap(snap.entries as WorkspaceDescriptor[]), true),
+          update: (message) => {
+            if (message.type !== "workspace_update" || !workspaces) return;
+            setWorkspaces(applyWorkspaceUpdate(workspaces, message.payload as WorkspaceUpdate), false);
+          },
+          error: () => {
+            live = false;
+          },
+        });
+        releaseFeed = () => {
+          stop();
+          void subscription.release().catch(() => {});
+        };
+      })
+      .catch(() => {
+        live = false;
+        void loadWorkspaces();
+      });
+  }
+
   let loading: Promise<void> | null = null;
   function loadWorkspaces(): Promise<void> {
     loading ??= paseo.workspaces
-      .list({ page: { limit: 200 }, sort: [{ key: "activity_at", direction: "desc" }] })
-      .then((result) => {
-        const next = new Map<string, WorkspaceInfo>();
-        for (const w of result.entries) {
-          if (w.archivingAt || w.background) continue;
-          const pr = w.githubRuntime?.pullRequest;
-          next.set(w.id, {
-            id: w.id,
-            name: w.name,
-            project: w.projectDisplayName,
-            branch: w.gitRuntime?.currentBranch ?? null,
-            status: w.status,
-            additions: w.diffStat?.additions ?? 0,
-            deletions: w.diffStat?.deletions ?? 0,
-            // The sidebar's own time; idle workspaces may have none, so fall back to the latest one known.
-            activityAt: latest(w.activityAt) || latest(w.lastUserMessageAt, w.statusEnteredAt, w.createdAt),
-            statusAt: latest(w.statusEnteredAt),
-            ahead: w.gitRuntime?.aheadOfOrigin ?? 0,
-            pr: pr
-              ? {
-                  number: pr.number ?? null,
-                  state: pr.isMerged ? "merged" : pr.isDraft ? "draft" : pr.state.toLowerCase() === "open" ? "open" : "closed",
-                  checks: pr.checksStatus ?? "none",
-                  review: pr.reviewDecision ?? null,
-                }
-              : null,
-          });
-        }
-        workspaces = next;
-        workspacesAt = Date.now();
-        if (!homeServer) homeServer = findHost(next);
-      })
+      .list(LIST)
+      .then((result) => setWorkspaces(workspaceMap(result.entries as WorkspaceDescriptor[]), true))
       .catch(() => {
         // Keep the previous list; cards fall back to sidebar labels.
       })
@@ -547,18 +565,19 @@ export function installSwitcher(paseo: Paseo): Switcher {
   function show() {
     if (!open) return;
     render();
-    if (Date.now() - workspacesAt > WORKSPACES_STALE_MS) {
-      void loadWorkspaces().then(() => {
-        if (!root) return;
-        const selected = cards[index]?.key;
-        const before = cards.length;
-        refreshCards();
-        const kept = cards.findIndex((c) => c.key === selected);
-        // A list that was empty while loading starts like a fresh open: on the previous workspace.
-        index = kept >= 0 ? kept : before === 0 && !query ? initialIndex(cards, currentKey()) : Math.max(0, Math.min(index, cards.length - 1));
-        render();
-      });
-    }
+    if (!live && Date.now() - workspacesAt > WORKSPACES_STALE_MS) void loadWorkspaces();
+  }
+
+  /** New workspace data while the switcher is drawn: same cards, same selection where possible. */
+  function rerender() {
+    if (!root) return;
+    const selected = cards[index]?.key;
+    const before = cards.length;
+    refreshCards();
+    const kept = cards.findIndex((c) => c.key === selected);
+    // A list that was empty while loading starts like a fresh open: on the previous workspace.
+    index = kept >= 0 ? kept : before === 0 && !query ? initialIndex(cards, currentKey()) : Math.max(0, Math.min(index, cards.length - 1));
+    render();
   }
 
   function refreshCards() {
@@ -1018,7 +1037,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
     }
   }, REFRESH_MS);
   syncRoute();
-  void loadWorkspaces();
+  watchWorkspaces();
 
   const api: Switcher = {
     history,
@@ -1035,6 +1054,8 @@ export function installSwitcher(paseo: Paseo): Switcher {
     },
     dispose() {
       close();
+      disposed = true;
+      releaseFeed?.();
       history?.dispose();
       clearInterval(routeTimer);
       clearInterval(refreshTimer);
@@ -1111,14 +1132,6 @@ function measure(name: string, start: number) {
   }
 }
 
-function latest(...times: Array<string | null | undefined>): number {
-  let best = 0;
-  for (const time of times) {
-    const at = time ? Date.parse(time) : 0;
-    if (at > best) best = at;
-  }
-  return best;
-}
 
 const PR_ICON = { open: "pr", draft: "prDraft", merged: "merge", closed: "prClosed" } as const;
 const CHECK_ICON = { success: "circleCheck", failure: "circleX", pending: "circle" } as const;
