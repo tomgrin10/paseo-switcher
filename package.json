@@ -30,7 +30,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
-    "verify": "npm run typecheck && npm test",
+    "verify": "npm run typecheck && npm test && node --test scripts/release-notes.test.mjs",
     "e2e": "node test/e2e/run.mjs",
     "e2e:history": "node test/e2e/history.mjs",
     "media": "node test/e2e/media.mjs"
