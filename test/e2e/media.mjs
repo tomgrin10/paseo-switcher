@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Records the README media of the real switcher: three GIFs and three stills.
 //
-//   E2E_ORIGIN=http://127.0.0.1:<port> PASEO_HOME=<home> npm run media [-- list thumbnails history]
+//   E2E_ORIGIN=http://127.0.0.1:<port> PASEO_HOME=<home> npm run media [-- list switcher thumbnails history]
 //
 // Name captures to record only those; with none, it records them all.
 //
@@ -24,6 +24,11 @@ import { authenticate, ORIGIN } from "./browser.mjs";
 
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), "../../docs/media");
 const H = 3600e3;
+/**
+ * Where the pointer rests at the start and end of the lead GIF, so it loops without a jump: empty chat,
+ * right of the switcher sheet, so it never hovers a row or a message.
+ */
+const REST = { x: 900, y: 380 };
 
 /** Oldest visit first; the switcher lists the last one first. */
 const SAMPLES = [
@@ -88,11 +93,14 @@ function enrich({ samples, host }) {
   }).observe(document, { subtree: true, childList: true, characterData: true });
 }
 
-/** Runs in the page. Adds `window.showKeys(...)`, which draws keycaps, since a GIF cannot show key presses. */
-function keycaps() {
+/**
+ * Runs in the page. Adds `window.showKeys(...)`, which draws keycaps, since a GIF cannot show key presses.
+ * `left` is the horizontal centre of the caps, as a CSS length.
+ */
+function keycaps({ left = "50%", bottom = "120px" } = {}) {
   const box = document.createElement("div");
   box.className = "demo-keys";
-  box.style.cssText = `position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 2147483647;
+  box.style.cssText = `position: fixed; left: ${left}; bottom: ${bottom}; transform: translateX(-50%); z-index: 2147483647;
     display: flex; gap: 8px; pointer-events: none; font: 600 22px/1 system-ui, sans-serif;`;
   document.body.appendChild(box);
   window.showKeys = (keys) =>
@@ -125,7 +133,8 @@ function cursor() {
       arrow.style.opacity = "1";
       place();
     }, true);
-    addEventListener("mousedown", () => {
+    // Pointer events, not mouse events: the history arrows cancel pointerdown, which suppresses mousedown.
+    addEventListener("pointerdown", () => {
       place(0.85);
       const ring = document.createElement("div");
       ring.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
@@ -138,7 +147,7 @@ function cursor() {
       });
       setTimeout(() => ring.remove(), 470);
     }, true);
-    addEventListener("mouseup", () => place(), true);
+    addEventListener("pointerup", () => place(), true);
     // Workspace hover cards show the checkout's local path; they are not part of any demo.
     const style = document.createElement("style");
     style.textContent = '[data-testid="workspace-hover-card"] { display: none !important; }';
@@ -246,8 +255,8 @@ async function assertSidebarSamples(page) {
 }
 
 /** Records frames while `script` runs, then encodes a GIF of `size` (the viewport for history, 1200x750 otherwise). */
-async function record(context, page, file, script, size) {
-  await page.evaluate(keycaps);
+async function record(context, page, file, script, size, keysAt) {
+  await page.evaluate(keycaps, keysAt);
   await page.waitForTimeout(1500);
   const frames = [];
   const cdp = await context.newCDPSession(page);
@@ -297,60 +306,56 @@ async function encode(frames, file, { width = 1200, height = 750 } = {}) {
   console.log(`Wrote ${file} (${frames.length} frames, ${Math.round(readFileSync(file).length / 1024)} KB)`);
 }
 
-const tab = async ({ wait, show, keyboard }, ...modifiers) => {
+const tab = async ({ wait, show, keyboard, flash = 260, after = 560 }, ...modifiers) => {
   await show("Ctrl", ...modifiers, "Tab");
   for (const m of modifiers) await keyboard.down(m);
   await keyboard.press("Tab");
   for (const m of modifiers) await keyboard.up(m);
-  await wait(260);
+  await wait(flash);
   await show("Ctrl");
-  await wait(560);
+  await wait(after);
 };
 
-/** Hold to browse, release to switch, a quick tap back, then type to filter. */
-async function listDemo(k) {
-  const { wait, show, keyboard, check } = k;
+/**
+ * The lead GIF: hold Ctrl and tap Tab three times to reach "Fix the flaky login test on Safari", release to
+ * switch, then the Back arrow returns to "Checkout redesign" and Forward goes to the Safari fix again. Both
+ * sit next to each other in the sidebar, so its highlight is in view the whole time.
+ * Starts in "Checkout redesign" with the pointer resting over the chat.
+ */
+async function leadDemo(k) {
+  const { page, wait, show, keyboard, check } = k;
+  const press = async (locator, dwell) => {
+    const box = await locator.boundingBox({ timeout: 3000 });
+    if (!box) throw new Error(`Not on screen: ${locator}`);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 16 });
+    await wait(dwell);
+    await page.mouse.down();
+    await wait(90);
+    await page.mouse.up();
+  };
+  const step = { ...k, flash: 350, after: 420 };
   await wait(600);
   await show("Ctrl");
   await keyboard.down("Control");
-  await wait(250);
-  await tab(k);
-  await tab(k);
-  await tab(k);
-  await tab(k, "Shift");
-  await check();
-  await keyboard.up("Control");
-  await show();
-  await wait(1600);
-  // A quick tap goes straight back to the previous workspace without drawing the switcher.
-  await show("Ctrl", "Tab");
-  await keyboard.down("Control");
-  await keyboard.press("Tab");
-  await keyboard.up("Control");
-  await wait(350);
-  await show();
-  await wait(1500);
-  // Typing filters every workspace, not only the recent ones, and keeps the switcher open.
-  await show("Ctrl", "Tab");
-  await keyboard.down("Control");
-  await keyboard.press("Tab");
-  await wait(450);
-  await show("Ctrl");
-  for (const ch of "search") {
-    await keyboard.press(ch);
-    await wait(130);
-  }
-  await keyboard.up("Control");
-  await show();
-  await wait(900);
-  await keyboard.press("ArrowDown");
-  await wait(700);
-  await check();
-  await show("Enter");
-  await keyboard.press("Enter");
+  await wait(500);
+  // The first sheet needs longer: the reader is still finding their way around it.
+  await tab(step);
+  await wait(500);
+  await tab(step);
+  await tab(step);
   await wait(300);
+  await check();
   await show();
-  await wait(1700);
+  await keyboard.up("Control");
+  await wait(1000);
+  await press(page.getByTestId("pws-history-back"), 650);
+  await wait(1000);
+  await press(page.getByTestId("pws-history-forward"), 500);
+  await wait(800);
+  await assertNoHostname(page);
+  await page.mouse.move(REST.x, REST.y, { steps: 16 });
+  // The encoder holds the last frame for another 1.2 s.
+  await wait(500);
 }
 
 async function stripDemo(k) {
@@ -440,10 +445,29 @@ try {
         await page.waitForTimeout(400);
         await still(page, join(OUT, "switcher-filter-dark.png"));
         await release(page);
-        await record(context, page, join(OUT, "switcher.gif"), listDemo);
       }
       await context.close();
     }
+  }
+  if (wanted("switcher")) {
+    // Recorded near README width, so the rows and the 16px arrows stay legible on GitHub.
+    const size = { width: 1000, height: 700 };
+    const { context, page } = await prepare(browser, { ...size, pointer: true });
+    await page.waitForSelector('[data-testid="pws-history"]');
+    // prepare ends in "Checkout redesign". Load its second tab once, then come back to the first, so Back
+    // lands straight on that tab with no spinner or tab flash.
+    const tabNamed = (title) => page.locator('[data-testid^="workspace-tab-"]', { hasText: title }).filter({ visible: true }).first();
+    await tabNamed("Write the payment tests").click();
+    await page.waitForTimeout(2500);
+    await tabNamed("Plan the new checkout").click();
+    await page.waitForTimeout(1500);
+    await page.mouse.move(REST.x, REST.y);
+    await assertSidebarSamples(page);
+    await assertNoHostname(page);
+    // Keycaps centred over the workspace, between the switcher's hint bar and the composer.
+    const sidebar = await page.evaluate(() => document.querySelector('[data-testid="pws-history"]').getBoundingClientRect().right);
+    await record(context, page, join(OUT, "switcher.gif"), leadDemo, size, { left: `${Math.round((sidebar + size.width) / 2)}px`, bottom: "170px" });
+    await context.close();
   }
   if (wanted("thumbnails")) {
     const { context, page } = await prepare(browser, { layout: "strip" });
