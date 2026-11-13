@@ -7,7 +7,7 @@
 
 Arc-style Ctrl+Tab for Paseo workspaces, plus back/forward navigation through workspaces, sessions, tabs, plugin pages and Settings. Hold Ctrl and tap Tab to step through your most recently used workspaces, release Ctrl to switch. A quick Ctrl+Tab flips straight back to the previous workspace without drawing anything. Start typing while it is open to find any workspace by name, project, branch or pull request number.
 
-![Holding Ctrl+Tab to browse recent workspaces, releasing to switch, a quick tap back, then typing "search" to find a workspace](docs/media/switcher.gif)
+![Holding Ctrl and tapping Tab to step through recent workspaces, releasing Ctrl to switch, then clicking Back at the top of the sidebar to return and Forward to go again](docs/media/switcher.gif)
 
 Each row shows the full workspace name, project, branch, pull request with its checks and review, diff stat, unpushed commits, and what the agent is doing and for how long:
 
