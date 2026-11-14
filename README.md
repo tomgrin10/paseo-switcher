@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/paseo-switcher?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-switcher)
 [![npm downloads](https://img.shields.io/npm/dm/paseo-switcher?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-switcher)
-[![Paseo](https://img.shields.io/badge/Paseo-0.15-8A63D2?style=for-the-badge)](https://paseo.sh)
+[![Paseo](https://img.shields.io/badge/Paseo-0.15%20%7C%200.16-8A63D2?style=for-the-badge)](https://paseo.sh)
 [![License](https://img.shields.io/github/license/tomgrin10/paseo-switcher?style=for-the-badge&color=2563eb)](LICENSE)
 
 Arc-style Ctrl+Tab for Paseo workspaces, plus back/forward navigation through workspaces, sessions, tabs, plugin pages and Settings. Hold Ctrl and tap Tab to step through your most recently used workspaces, release Ctrl to switch. A quick Ctrl+Tab flips straight back to the previous workspace without drawing anything. Start typing while it is open to find any workspace by name, project, branch or pull request number.
@@ -78,7 +78,7 @@ A quick tap does no drawing at all, only a click on the previous workspace. The 
 
 ## Limits
 
-- The plugin reads Paseo's page structure, which is not a public plugin API, so it is pinned to Paseo 0.15 and may need an update when Paseo changes.
+- The plugin reads Paseo's page structure, which is not a public plugin API, so it is pinned to Paseo 0.15 and 0.16 and may need an update when Paseo changes.
 - It runs in the desktop app and the web UI, and does nothing on iOS and Android.
 - In the Thumbnails layout, thumbnails are kept in memory only. A workspace you have not opened since the app started shows "No preview yet" instead.
 - The switcher lists the workspaces of the host you are on. Recent workspaces from another host keep their sidebar name but show no details.
