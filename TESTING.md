@@ -6,11 +6,16 @@ Two layers:
 | --- | --- | --- |
 | `npm run verify` | Typecheck and unit tests for the ordering logic (`test/model.test.ts`) | Nothing |
 | `npm run e2e` | Behavior and performance in Paseo's real web UI, against a throwaway daemon (`test/e2e/run.mjs`) | A throwaway daemon with this plugin installed (see below) |
+| `npm run e2e:header` | Where the history arrows sit on the 0.16 and 0.17 sidebar headers, desktop and web, in a real browser on static fixtures | Chromium only, no daemon |
 | `npm run e2e:history -- --reload` | Back/forward through session tabs, workspaces and plugin settings; mouse, shortcuts, history branching, the off switch and cleanup | The same throwaway daemon, with a workspace that has two open tabs |
 
 Run `npm run e2e -- --reload` before a release. It also reloads the plugin with `paseo plugin reload paseo-switcher` and checks that it cleans up after itself. Add `--headed` to watch the browser if you have a display.
 
 The history suite sends trusted browser Back/Forward mouse events through Chromium's input protocol, plus BrowserBack/BrowserForward key events. It checks that Settings arrows follow their header when native window-control clearance moves it, remain visible at their last position when a sidebar anchor disappears, and never detach or reparent during workspace navigation. These cover browser behavior; physical Logitech hardware and native macOS command delivery need a manual pass on the user's Mac.
+
+## Sidebar header fixtures
+
+Paseo's web UI never draws the desktop window-chrome row (traffic lights and sidebar button), so `npm run e2e:header` (`test/e2e/sidebar-header.mjs`) rebuilds the top of the sidebar for each Paseo version and platform and runs the real `client/web.ts` on it. It checks that on desktop the arrows sit right-aligned in the chrome row, clear of the sidebar button, with no extra row, and that on plain web one spacer row holds them outside the scrolling nav. Add `-- --out <dir>` for light and dark screenshots, and `-- --client <dir>` to run another checkout's `client/` (to render the before state).
 
 ## End-to-end setup
 
