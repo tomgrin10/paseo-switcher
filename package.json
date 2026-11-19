@@ -33,6 +33,7 @@
     "verify": "npm run typecheck && npm test && node --test scripts/release-notes.test.mjs",
     "e2e": "node test/e2e/run.mjs",
     "e2e:history": "node test/e2e/history.mjs",
+    "e2e:header": "node test/e2e/sidebar-header.mjs",
     "media": "node test/e2e/media.mjs"
   },
   "devDependencies": {

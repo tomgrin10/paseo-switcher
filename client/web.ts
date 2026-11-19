@@ -7,9 +7,11 @@ import {
   type HistoryShortcut,
   type Visit,
 } from "./history";
+import { findSidebarHeader } from "./sidebar-header";
 
 // Paseo 0.15 DOM contracts, alongside switcher.ts's workspace-row/deck contracts:
-// - sidebar-global-new-workspace and sidebar-sessions/search share the nav group
+// - sidebar-global-new-workspace and sidebar-sessions/search share the nav group; the header
+//   row above it is found in sidebar-header.ts (sidebar-nav-scroll on 0.17)
 // - workspace-tab-<deterministic ID>, aria-selected; workspace-pane-<pane ID>
 // - settings-sidebar and settings-back-to-workspace: the Settings header below window controls
 // All DOM access stays in this web-only adapter; native installs are a no-op.
@@ -402,24 +404,13 @@ export function installHistory(navigateWorkspace: (key: string) => void): Histor
     clearSettingsAnchor();
     const candidate = byId("sidebar-global-new-workspace");
     const row = candidate?.checkVisibility() ? candidate : null;
-    let group = row?.parentElement;
-    while (
-      group &&
-      !group.querySelector('[data-testid="sidebar-sessions"], [data-testid="sidebar-search"]')
-    )
-      group = group.parentElement;
-    // All other built-in rows may be hidden in Settings > Sidebar.
-    group ||= row?.parentElement?.parentElement?.parentElement;
-    const dragArea = group?.parentElement;
-    if (dragArea) {
-      const previous = group.previousElementSibling;
-      const chrome =
-        previous && previous !== spacer && previous.getBoundingClientRect().height >= 28
-          ? previous
-          : null;
+    const header = row && findSidebarHeader(row, spacer);
+    if (header) {
+      const { chrome, parent, before } = header;
       toolbar.className = chrome ? "pws-history pws-history-chrome" : "pws-history";
       if (chrome) spacer.remove();
-      else if (spacer.parentElement !== dragArea) dragArea.insertBefore(spacer, group);
+      else if (spacer.parentElement !== parent || spacer.nextElementSibling !== before)
+        parent.insertBefore(spacer, before);
       position(chrome || spacer);
       // Match the host's sidebar label in both themes, including custom themes.
       const label = row.querySelector('[dir="auto"]');
