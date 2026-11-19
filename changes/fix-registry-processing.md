@@ -1,0 +1,1 @@
+Release verification waits longer for npm to finish processing a package, so a successful publish can finish creating its GitHub release without a manual retry. Incorrect package contents or release tags still block the release.

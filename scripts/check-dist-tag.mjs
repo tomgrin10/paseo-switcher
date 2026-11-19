@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 
 // A prerelease belongs on beta and a stable release on latest. Never let a prerelease be latest.
 export function expectedDistTag(version) {
@@ -8,23 +7,55 @@ export function expectedDistTag(version) {
 
 export function checkDistTags(version, tags) {
   const tag = expectedDistTag(version);
-  if (tag === "beta" && tags.latest === version) throw new Error(`Prerelease ${version} is tagged latest`);
+  if (tag === "beta" && tags.latest === version) {
+    throw Object.assign(new Error(`Prerelease ${version} is tagged latest`), { permanent: true });
+  }
   if (tags[tag] !== version) throw new Error(`The ${tag} dist-tag is ${tags[tag]}, expected ${version}`);
   return tag;
 }
 
-// Waits for registry propagation. A prerelease on latest fails at once; nothing will fix it by waiting.
-export async function waitForDistTags(name, version, attempts = 60) {
-  let last = new Error("Could not read dist-tags");
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const view = spawnSync("npm", ["view", name, "dist-tags", "--json", "--prefer-online", "--registry", "https://registry.npmjs.org"], { encoding: "utf8" });
-    if (view.status === 0) {
-      try { return checkDistTags(version, JSON.parse(view.stdout)); }
-      catch (error) { last = error; if (/tagged latest/.test(error.message)) throw error; }
+// One deadline covers npm processing, content visibility and tag propagation, including on reruns.
+// Dependencies are injectable so tests exercise the full wait without network access or real delays.
+export async function waitForDistTags(name, version, {
+  integrity,
+  timeoutMs = 15 * 60 * 1000,
+  fetchRegistry = globalThis.fetch,
+  now = Date.now,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+  const deadline = now() + timeoutMs;
+  let delay = 5000;
+  let last = new Error("Could not read registry metadata");
+  while (now() < deadline) {
+    try {
+      const response = await fetchRegistry(`https://registry.npmjs.org/${encodeURIComponent(name)}`, {
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(Math.max(1, Math.min(30000, deadline - now()))),
+      });
+      if (!response.ok) throw new Error(`Registry returned HTTP ${response.status}`);
+      const metadata = await response.json();
+      const tags = metadata["dist-tags"] ?? {};
+      // Do not wait out a channel violation, even if package contents are still processing.
+      if (expectedDistTag(version) === "beta" && tags.latest === version) checkDistTags(version, tags);
+      if (integrity !== undefined) {
+        const remote = metadata.versions?.[version]?.dist?.integrity;
+        if (!remote) throw new Error(`Registry contents for ${name}@${version} are not available yet`);
+        if (remote !== integrity) {
+          throw Object.assign(new Error(`${name}@${version} has different contents. Release a new version; do not rewrite the tag.`), { permanent: true });
+        }
+      }
+      return checkDistTags(version, tags);
+    } catch (error) {
+      if (error.permanent) throw error;
+      last = error;
     }
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    const remaining = deadline - now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(delay, remaining));
+    delay = Math.min(delay * 2, 30000);
   }
-  throw last;
+  throw new Error(`Registry verification timed out for ${name}@${version}: ${last.message}`, { cause: last });
 }
 
 if (process.argv[1]?.endsWith("check-dist-tag.mjs")) {
