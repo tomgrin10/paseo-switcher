@@ -78,7 +78,7 @@ A quick tap does no drawing at all, only a click on the previous workspace. The 
 
 ## Limits
 
-- The plugin reads Paseo's page structure, which is not a public plugin API, so it is pinned to Paseo 0.15, 0.16 and 0.17 and may need an update when Paseo changes.
+- The plugin reads Paseo's page structure, which is not a public plugin API, so a new Paseo version can break parts of it until it gets an update. It is tested on Paseo 0.15, 0.16 and 0.17.
 - It runs in the desktop app and the web UI, and does nothing on iOS and Android.
 - In the Thumbnails layout, thumbnails are kept in memory only. A workspace you have not opened since the app started shows "No preview yet" instead.
 - The switcher lists the workspaces of the host you are on. Recent workspaces from another host keep their sidebar name but show no details.
