@@ -1,3 +1,4 @@
+import { layoutQueries } from "./layout-swap.ts";
 // Pure ordering logic, kept free of DOM and React so it is easy to test.
 
 export interface WorkspaceInfo {
@@ -156,7 +157,8 @@ function startsWord(text: string, at: number): boolean {
 /**
  * Every workspace whose name, project, branch or pull request number contains all the query's
  * words. Names that match at the start of a word come first; ties keep recency (visit order, then
- * latest activity), so the workspace you were just in stays near the top.
+ * latest activity), so the workspace you were just in stays near the top. Literal hits always
+ * precede layout conversions. Pass physical=query to request literal matching only.
  */
 export function filterCards(
   query: string,
@@ -164,21 +166,25 @@ export function filterCards(
   serverId: string | null,
   workspaces: ReadonlyMap<string, WorkspaceInfo> | null,
   max = MAX_LIMIT,
+  physical?: string | null,
 ): Card[] {
   const words = queryWords(query);
   if (!words.length || !serverId || !workspaces) return [];
+  const variants = [query, ...(physical === query ? [] : layoutQueries(query, physical))].map(queryWords);
   const recent = new Map(mru.map((key, i) => [key, i]));
   const scored: Array<{ card: Card; rank: number; recency: number; activity: number }> = [];
   for (const info of workspaces.values()) {
     const text = haystack(info);
-    if (!words.every((w) => text.includes(w))) continue;
+    const variant = variants.findIndex(ws => ws.every(w => text.includes(w)));
+    if (variant < 0) continue;
+    const matchedWords = variants[variant];
     const name = info.name.toLowerCase();
-    const named = words.every((w) => {
+    const named = matchedWords.every((w) => {
       for (let at = name.indexOf(w); at !== -1; at = name.indexOf(w, at + 1)) if (startsWord(name, at)) return true;
       return false;
     });
     const key = workspaceKey(serverId, info.id);
-    scored.push({ card: { key, serverId, workspaceId: info.id, info }, rank: named ? 0 : 1, recency: recent.get(key) ?? Infinity, activity: info.activityAt });
+    scored.push({ card: { key, serverId, workspaceId: info.id, info }, rank: (variant === 0 ? 0 : 2) + (named ? 0 : 1), recency: recent.get(key) ?? Infinity, activity: info.activityAt });
   }
   scored.sort((a, b) => a.rank - b.rank || a.recency - b.recency || b.activity - a.activity);
   return scored.slice(0, max).map((s) => s.card);

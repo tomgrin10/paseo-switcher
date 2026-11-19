@@ -322,6 +322,8 @@ A 15px-cornered card with a thumbnail framed by a 1px hairline at 9px corners. T
 
 It appears only once there is a query: a 48px `solid` bar with a bottom rule, a 16px muted search icon, the query in 500 15px, a blinking caret, and a right-aligned tabular count ("1 match", "2 matches", "5 of 12"; empty when nothing matches). Matched letters in names take the `mark` highlight.
 
+When only a keyboard-layout conversion finds results, a plain muted 12px line beneath the query reads “Showing results for …”. Keep the typed query visible, isolate the interpreted value with `bdi`, and hide the explanation when literal results suffice or the query is empty. The sheet stays pinned; the explanation occupies one content row before the matches. A persistent, visually hidden status region announces interpretation changes without adding a focus stop.
+
 ### Hint keycaps
 
 A `solid` pill under the sheet that lists only the keys that work right now:

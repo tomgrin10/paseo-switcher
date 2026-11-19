@@ -1,3 +1,4 @@
+import { LayoutCapture, layoutQueries } from "./layout-swap";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { installHistory, type HistoryControls } from "./web";
 import {
@@ -133,6 +134,9 @@ export function installSwitcher(paseo: Paseo): Switcher {
   let dark = false;
   /** Typed while the switcher is open; filters every workspace, not only recent ones. */
   let query = "";
+  const capture = new LayoutCapture();
+  let physical: string | null = null;
+  let convertedHint: string | null = null;
   /** Every match for the query; only the first MAX_LIMIT are listed. */
   let matches = 0;
   /** The host of the loaded workspace list, for when neither the route nor the history names one. */
@@ -149,6 +153,10 @@ export function installSwitcher(paseo: Paseo): Switcher {
   host.setAttribute("data-paseo-switcher", "");
   host.className = "pws-host";
   doc.body.appendChild(host);
+  // Keep the live region mounted: freshly inserted populated regions can be missed.
+  const announcement = el("div", "pws-announcement");
+  announcement.setAttribute("role", "status");
+  host.appendChild(announcement);
   history = installHistory(navigate);
 
   // ---- storage --------------------------------------------------------------------------------
@@ -556,6 +564,8 @@ export function installSwitcher(paseo: Paseo): Switcher {
     mode = nextMode;
     open = true;
     query = "";
+    physical = capture.change("");
+    convertedHint = null;
     cards = buildCards(mru, serverId(), workspaces, limit);
     index = direction === 1 ? initialIndex(cards, currentKey()) : wrap(-1, cards.length);
     clearTimeout(showTimer);
@@ -585,10 +595,15 @@ export function installSwitcher(paseo: Paseo): Switcher {
 
   function refreshCards() {
     if (!query) {
+      convertedHint = null;
       cards = buildCards(mru, serverId(), workspaces, limit);
       return;
     }
-    const all = filterCards(query, mru, serverId(), workspaces, Infinity);
+    const all = filterCards(query, mru, serverId(), workspaces, Infinity, physical);
+    const direct = filterCards(query, mru, serverId(), workspaces, Infinity, query);
+    // A direct result needs no explanation; otherwise name the conversion that found a result.
+    convertedHint = direct.length ? null : layoutQueries(query, physical).find(q =>
+      filterCards(q, mru, serverId(), workspaces, Infinity, q).length > 0) ?? null;
     matches = all.length;
     cards = all.slice(0, MAX_LIMIT);
   }
@@ -596,6 +611,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
   /** Typing filters; it also turns a held switcher into one that waits for Enter or a click. */
   function setQuery(next: string) {
     if (next === query) return;
+    physical = capture.change(next);
     query = next;
     mode = "sticky";
     refreshCards();
@@ -614,6 +630,9 @@ export function installSwitcher(paseo: Paseo): Switcher {
   function close() {
     open = false;
     query = "";
+    physical = capture.change("");
+    convertedHint = null;
+    announcement.textContent = "";
     clearTimeout(showTimer);
     if (root) {
       // Canvases are reused by the next open; detach them before dropping the overlay.
@@ -702,6 +721,17 @@ export function installSwitcher(paseo: Paseo): Switcher {
     // One sheet: the query, when there is one, is its header, so typing never moves the rows.
     const sheet = el("div", "pws-sheet");
     if (query) sheet.appendChild(queryBar());
+    if (convertedHint) {
+      const note = el("div", "pws-layout-hint");
+      note.setAttribute("aria-hidden", "true");
+      note.appendChild(doc.createTextNode("Showing results for “"));
+      const value = el("bdi", "", convertedHint);
+      note.appendChild(value);
+      note.appendChild(doc.createTextNode("”"));
+      sheet.appendChild(note);
+    }
+    const message = convertedHint ? `Showing results for “${convertedHint}”` : "";
+    if (announcement.textContent !== message) announcement.textContent = message;
     sheet.appendChild(panel);
     const parts: Node[] = [sheet];
     if (cards.length || query) parts.push(hintBar());
@@ -790,7 +820,8 @@ export function installSwitcher(paseo: Paseo): Switcher {
       return node;
     }
     let from = 0;
-    for (const [start, end] of matchRanges(name, query)) {
+    const highlight = [query, ...layoutQueries(query, physical)].find(q => matchRanges(name, q).length) ?? query;
+    for (const [start, end] of matchRanges(name, highlight)) {
       if (start > from) node.appendChild(doc.createTextNode(name.slice(from, start)));
       node.appendChild(el("mark", "pws-mark", name.slice(start, end)));
       from = end;
@@ -990,7 +1021,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
 
   function onKeyDown(e: any) {
     if (!open && history?.handleKey(e, keys.realKey(e))) return;
-    if (e.isComposing) return;
+    if (e.isComposing) { if (open) { capture.reset(); physical = null; } return; }
     const key = keys.realKey(e);
     if (key === "Tab" && e.ctrlKey && !e.metaKey && !e.altKey) {
       stop(e);
@@ -1000,7 +1031,12 @@ export function installSwitcher(paseo: Paseo): Switcher {
     }
     if (!open) return;
     if (key === "Control" || key === "Shift") return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && key.toLowerCase() === "v") {
+      capture.reset(); physical = null; return;
+    }
     stop(e);
+    // Ctrl remains held during type-to-find; it is the switcher gesture, not a field shortcut.
+    capture.key({ ...e, key, code: keys.realCode(e), shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, ctrlKey: false }, query, query.length, query.length);
     if (key === "Escape") {
       if (query) setQuery("");
       else close();
@@ -1025,6 +1061,21 @@ export function installSwitcher(paseo: Paseo): Switcher {
     if (open) close();
   }
 
+  function onPaste(e: any) {
+    if (!open) return;
+    stop(e);
+    capture.reset();
+    setQuery(query + (e.clipboardData?.getData("text/plain") ?? ""));
+  }
+  function onCompositionStart() {
+    if (open) { capture.reset(); physical = null; }
+  }
+  function onCompositionEnd(e: any) {
+    if (open && e.data) setQuery(query + e.data);
+  }
+  win.addEventListener("paste", onPaste, true);
+  win.addEventListener("compositionstart", onCompositionStart, true);
+  win.addEventListener("compositionend", onCompositionEnd, true);
   win.addEventListener("keydown", onKeyDown, true);
   win.addEventListener("keyup", onKeyUp, true);
   win.addEventListener("blur", onBlur);
@@ -1063,6 +1114,9 @@ export function installSwitcher(paseo: Paseo): Switcher {
       clearInterval(routeTimer);
       clearInterval(refreshTimer);
       observer.disconnect();
+      win.removeEventListener("paste", onPaste, true);
+      win.removeEventListener("compositionstart", onCompositionStart, true);
+      win.removeEventListener("compositionend", onCompositionEnd, true);
       win.removeEventListener("keydown", onKeyDown, true);
       win.removeEventListener("keyup", onKeyUp, true);
       keys.release();
@@ -1087,14 +1141,14 @@ export function installSwitcher(paseo: Paseo): Switcher {
  * otherwise open the Command Center): everyone else reads them as an unidentified key with no
  * code, which matches no shortcut, while the switcher reads the real key through `realKey`.
  */
-function claimKeys(isOpen: () => boolean, extra: (event: any, key: string) => boolean): { realKey(e: any): string; release(): void } {
+function claimKeys(isOpen: () => boolean, extra: (event: any, key: string) => boolean): { realKey(e: any): string; realCode(e: any): string; release(): void } {
   const proto = g.KeyboardEvent?.prototype;
   const get = (name: string) => (proto ? Object.getOwnPropertyDescriptor(proto, name) : undefined);
   const key = get("key");
   const code = get("code");
   const [keyOf, codeOf, ctrlOf, metaOf, altOf] = [key, code, get("ctrlKey"), get("metaKey"), get("altKey")].map((d) => d?.get);
   if (!keyOf || !codeOf || !ctrlOf || !metaOf || !altOf || !key?.configurable || !code?.configurable) {
-    return { realKey: (e) => e.key, release() {} };
+    return { realKey: (e) => e.key, realCode: (e) => e.code, release() {} };
   }
   // Modifier presses stay visible, so anything tracking held modifiers never gets stuck.
   const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta"]);
@@ -1114,6 +1168,7 @@ function claimKeys(isOpen: () => boolean, extra: (event: any, key: string) => bo
   Object.defineProperty(proto, "code", { ...code, get: hiddenCode });
   return {
     realKey: (e) => keyOf.call(e),
+    realCode: (e) => codeOf.call(e),
     release() {
       // Restore only our own getters, in case something else wrapped them since.
       if (get("key")?.get === hiddenKey) Object.defineProperty(proto, "key", key);
@@ -1296,6 +1351,8 @@ const CSS = `
   background: var(--pws-solid); border-bottom: 1px solid var(--pws-border);
   color: var(--pws-fg); font-size: 15px;
 }
+.pws-announcement { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.pws-layout-hint { padding: 8px 18px; color: var(--pws-muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
 .pws-query-icon { width: 16px; height: 16px; color: var(--pws-muted); flex: 0 0 auto; }
 .pws-query-text { white-space: pre; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-weight: 500; }
 .pws-caret { flex: 0 0 auto; width: 1.5px; height: 19px; margin-left: -9px; background: var(--pws-fg); animation: pws-blink 1s steps(1) infinite; }
