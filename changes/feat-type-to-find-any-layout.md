@@ -1,1 +1,0 @@
-Type-to-find finds the workspace even when you typed on the wrong keyboard layout. Direct matches stay first, and a quiet hint explains a converted search. Physical keyboards work across layouts; pasted text and soft keyboards have Hebrew and Russian fallbacks.
