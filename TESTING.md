@@ -46,6 +46,7 @@ The run takes about four minutes. It prints a PASS/FAIL line per check, writes `
 | B2 | Holding Ctrl+Tab shows the 5 most recent workspaces, in that order |
 | B3 | The previous workspace is preselected, so a single Ctrl+Tab goes back |
 | B4, B4b | Thumbnails are rendered images with real content, not blank |
+| B4c, B4d | Thumbnails are stored in idle time and redrawn after a reload, so the strip is not a row of placeholders |
 | B5–B7 | Tab wraps around; Shift+Tab and the arrow keys move |
 | B8 | Releasing Ctrl switches to the selected workspace |
 | B9, B10 | A quick tap flips to the previous workspace and never draws the strip |
