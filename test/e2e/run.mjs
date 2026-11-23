@@ -209,6 +209,38 @@ async function behavior(page, visited) {
   check("B16", "Losing window focus cancels", !s.open);
 }
 
+async function previewsAfterReload(page) {
+  // Thumbnail sources are stored in idle time (at most every 30 s), then redrawn after a reload.
+  const stored = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const open = indexedDB.open("paseo-switcher", 1);
+          open.onupgradeneeded = () => open.result.createObjectStore("previews", { keyPath: "key" });
+          open.onsuccess = () => {
+            const count = open.result.transaction("previews").objectStore("previews").count();
+            count.onsuccess = () => { open.result.close(); resolve(count.result); };
+            count.onerror = () => { open.result.close(); resolve(0); };
+          };
+          open.onerror = () => resolve(0);
+        }),
+    );
+  let saved = 0;
+  for (let i = 0; i < 45 && saved < 4; i++) {
+    saved = await stored();
+    if (saved < 4) await page.waitForTimeout(1000);
+  }
+  check("B4c", "Thumbnails are stored for the next reload", saved >= 4, saved);
+  await boot(page);
+  await page.waitForTimeout(4000);
+  await holdOpen(page);
+  const s = await strip(page);
+  check("B4d", "After a reload the strip shows the stored thumbnails, not placeholders", s.canvases >= 4, s.canvases);
+  await page.screenshot({ path: join(ARTIFACTS, "strip-after-reload.png") });
+  await page.keyboard.press("Escape");
+  await page.keyboard.up("Control");
+}
+
 async function typeToFilter(page) {
   const start = await cur(page);
   await holdOpen(page);
@@ -807,6 +839,7 @@ async function main() {
     await warmUp(page, visited);
 
     await behavior(page, visited);
+    await previewsAfterReload(page);
     await typeToFilter(page);
     await commandCenterAndMouse(page);
     await composer(page);

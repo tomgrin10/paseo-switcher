@@ -81,9 +81,6 @@ typography:
     fontWeight: 600
     lineHeight: "16px"
     fontFeature: "tnum"
-  tile-letter:
-    fontSize: "12px"
-    fontWeight: 650
   placeholder-letter:
     fontSize: "17px"
     fontWeight: 650
@@ -91,7 +88,6 @@ rounded:
   chrome-button: "6px"
   mark: "3px"
   key: "5px"
-  tile: "7px"
   thumb: "9px"
   placeholder-tile: "10px"
   row: "12px"
@@ -141,12 +137,6 @@ components:
     rounded: "{rounded.card}"
   thumbnail:
     rounded: "{rounded.thumb}"
-  project-tile:
-    backgroundColor: "{colors.tile}"
-    textColor: "{colors.muted}"
-    rounded: "{rounded.tile}"
-    size: "22px"
-    typography: "{typography.tile-letter}"
   placeholder-tile:
     backgroundColor: "{colors.tile}"
     textColor: "{colors.muted}"
@@ -229,7 +219,7 @@ Zinc neutrals in two themes, with Paseo's status hues as the only colour. Each h
 - **Ink** (`ink` / `ink-dark`): names, query text, PR numbers, the status label for running, and keycaps in the hint.
 - **Muted** (`muted` / `muted-dark`): the meta line, times, counts, keycaps on rows, the search icon, tile letters and the "Type to filter" hint.
 - **Border** (`border` / `border-dark`): the sheet edge, the query header's bottom rule, the hint pill edge, and the keycap edge and bottom lip.
-- **Tile** (`tile` / `tile-dark`): the project tile and the placeholder letter tile.
+- **Tile** (`tile` / `tile-dark`): the placeholder letter tile.
 - **Selected and Ring** (`selected`, `ring` and their dark values): the selected row or card fill and its 1px inset ring. The ring colour is also the strip's scrollbar thumb.
 - **Mark** (`mark` / `mark-dark`): the highlight behind the matched letters of a filtered name.
 - **Faint, Thumb border and Key**: the placeholder thumbnail ground, the thumbnail hairline, and the keycap face.
@@ -270,9 +260,9 @@ Zinc neutrals in two themes, with Paseo's status hues as the only colour. Each h
 ## Layout
 
 - **Placement:** the overlay fills the window and pins its content to the top, at `max(48px, 16vh)`, centred. So the sheet grows downward and never jumps while you type. The sheet and the hint stack with a 10px gap.
-- **List (default):** the sheet is `min(680px, 100vw − 32px)` wide. Rows stack 2px apart inside a 6px inset. Each row is a grid of number keycap | 22px project tile | name and meta | status column, with 12px column gaps and 10 × 12px padding. The list scrolls inside a height of `100vh − top − 150px`. It scrolls the selection into view only when it overflows, because scrolling forces a layout.
-- **Thumbnails:** cards from 176px to 240px wide (aspect 0.66) are sized to fit every card in the window less 48px a side. They sit 6px apart inside a 10px inset. A strip that still overflows scrolls sideways and fades 28px at each edge rather than cutting a card. Cards align to the top, so a two-line name never stretches its neighbours.
-- **Phone rule (under 600px):** the thumbnail layout falls back to the list. The project tile drops and the grid tightens to 10px gaps with 10px padding. The meta line wraps, and the hint becomes the sentence "Tap a workspace to switch". A coarse pointer gets that sentence at any width.
+- **List (default):** the sheet is `min(680px, 100vw − 32px)` wide. Rows stack 2px apart inside a 6px inset. Each row is a grid of number keycap | name and meta | status column, with 12px column gaps and 10 × 12px padding. The meta line separates its parts with a muted middle dot (project · branch · pull request · checks · diff), the same reading as the strip. A letter tile beside the keycap was dropped in 1.2.5: it repeated the project already on the meta line and read as two grey squares before every name. The list scrolls inside a height of `100vh − top − 150px`. It scrolls the selection into view only when it overflows, because scrolling forces a layout.
+- **Thumbnails:** cards from 176px to 240px wide (aspect 0.66) are sized to fit every card in the window less 48px a side. They sit 6px apart inside a 10px inset. When they cannot all fit, `client/strip.ts` sizes whole cards plus a 56px peek of the next one, so the edge never cuts a card mid-word and a narrow window still shows there is more. Only a side with more cards beyond it fades, over the peek's width, and the selection scrolls clear of the fade (`scroll-padding-inline`). Cards align to the top, so a two-line name never stretches its neighbours.
+- **Phone rule (under 600px):** the thumbnail layout falls back to the list. The grid tightens to 10px gaps with 10px padding. The meta line wraps, and the hint becomes the sentence "Tap a workspace to switch". A coarse pointer gets that sentence at any width.
 - **Status column:** right-aligned and unwrapped. The status line sits on the name's 20px baseline, and the time sits under it.
 
 ## Elevation & Depth
@@ -292,7 +282,7 @@ There are three layers: the scrim, the blurred translucent sheet, and opaque sol
 
 ## Shapes
 
-Nested rounded rectangles. Each radius is smaller than the one around it: sheet 22px (strip) or 18px (list), card 15px, row 12px, placeholder tile 10px, thumbnail 9px, project tile 7px, keycap 5px, match 3px. The hint is a pill. Status dots and the running ring are circles (8px and 9px). The ring has a 1.75px stroke with its top quarter open.
+Nested rounded rectangles. Each radius is smaller than the one around it: sheet 22px (strip) or 18px (list), card 15px, row 12px, placeholder tile 10px, thumbnail 9px, keycap 5px, match 3px. The hint is a pill. Status dots and the running ring are circles (8px and 9px). The ring has a 1.75px stroke with its top quarter open.
 
 ## Components
 
@@ -303,14 +293,13 @@ The one floating panel: `panel` over a 28px blur, a 1px `border` edge, the sheet
 ### List row (signature)
 
 - **Number keycap:** 1–9 for the first nine rows (empty beyond), 1px below the top.
-- **Project tile:** 22px `tile` square with 7px corners, holding the project's first letter in muted 650 (or "?"). It is a neutral tile, never coloured per project.
 - **Main:** the full name (marked letters when filtering) and a wrapping meta line: project, branch (mono, only when not the name), PR chip (Lucide icon + `#N` and "Draft", "Merged" or "Closed"), checks (icon + passed/failed/pending), "Approved" or "Changes requested", `+N −N`, and the unpushed count with an up arrow and a "N commits not pushed" tooltip. Checks and review show only while the PR is open or draft.
 - **Status column:** the status mark and label, then "for 8m"; with no live status, just "2h ago" or "just now".
 - **States:** hover moves the selection (no separate hover style), a click commits, and selection changes the background and ring over 90ms.
 
 ### Thumbnail card
 
-A 15px-cornered card with a thumbnail framed by a 1px hairline at 9px corners. The thumbnail ground is the workspace's own surface colour. The number keycap sits 6px in from the top-right corner. Below come the title (status mark + name, two lines at most) and a meta line (project · branch, then the diff). Before a raster exists, or when it was taken in the other theme, a placeholder shows a 36px letter tile and "No preview yet".
+A 15px-cornered card with a thumbnail framed by a 1px hairline at 9px corners. The thumbnail ground is the workspace's own surface colour. The number keycap sits 6px in from the top-right corner. Below come the title (status mark + name, two lines at most) and a meta line (project · branch, then the diff). Rasters are kept across reloads (their SVG source, in IndexedDB, redrawn in idle time). Before a raster exists, or when it was taken in the other theme, a placeholder shows a 36px letter tile and "No preview yet".
 
 ### Status marks
 
@@ -371,7 +360,7 @@ The toolbar stays mounted at document level and aligns with the sidebar title ba
 - **Do** use Lucide stroke icons (24-unit box, 2px stroke, drawn at 13px in meta and 16px in the query) for PR state, checks, unpushed commits and search, and keycaps for keys.
 - **Do** keep the query header inside the same sheet, so typing never moves the panel.
 - **Do** show only the keys that work in the current state.
-- **Do** fall back to the list, drop the project tile and switch to "Tap a workspace to switch" below 600px or on a coarse pointer.
+- **Do** fall back to the list and switch to "Tap a workspace to switch" below 600px or on a coarse pointer.
 - **Do** keep the overlay to plain DOM under 200 elements, and leave the navigation path untouched: thumbnails rasterize only in idle time.
 - **Do** honour reduced motion in every animation, including the sheet's settle-in.
 
@@ -382,5 +371,5 @@ The toolbar stays mounted at document level and aligns with the sidebar title ba
 - **Don't** nest cards inside cards; rows and thumbnail cards sit directly on the sheet.
 - **Don't** use glyph or emoji icons; arrows appear only as keycap labels.
 - **Don't** truncate names or branches in the list; wrap them.
-- **Don't** give a project its own hue; the project tile is neutral.
+- **Don't** give a project its own hue.
 - **Don't** add blur or a shadow to the hint pill; it is solid.

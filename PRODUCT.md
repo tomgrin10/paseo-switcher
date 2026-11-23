@@ -43,8 +43,9 @@ few workspaces you are juggling. _(inferred)_
 - Speed is the product: navigation observation only schedules work, and never snapshots thumbnails; budgets are enforced by the end-to-end
   suite (quick tap < 5 ms, opening < 30 ms, moving < 5 ms, typing a filter < 30 ms, strip gone
   < 60 ms after release, sidebar switching no slower with the plugin).
-- Thumbnails are rasterized only in idle time and kept in memory; the default list layout does no
-  background work.
+- Thumbnails are rasterized only in idle time. Their SVG source is stored in this origin's IndexedDB
+  (12 at most, 8 MB at most, written at most every 30 s and when the page hides) and redrawn in idle
+  time after a reload. The default list layout does no background work.
 - Settings and recent-workspace order live in the browser's localStorage per device. Chronological
   back/forward history stays in window memory and resets on document reload.
 - Does nothing on iOS and Android.

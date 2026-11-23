@@ -1,6 +1,8 @@
 import { LayoutCapture, layoutQueries } from "./layout-swap";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { installHistory, type HistoryControls } from "./web";
+import { CARD_MAX, PEEK, stripFit } from "./strip";
+import { previewStore, type StoredPreview } from "./previews";
 import {
   ago,
   buildCards,
@@ -58,9 +60,9 @@ const REFRESH_MS = 2000;
 const QUIET_AFTER_SWITCH_MS = 2000;
 const WORKSPACES_STALE_MS = 5000;
 const MAX_THUMBS = 12;
+/** Taken thumbnails are written to storage at most this often, in idle time, and when the page hides. */
+const SAVE_EVERY_MS = 30000;
 
-const CARD_MAX = 240;
-const CARD_MIN = 176;
 const ASPECT = 0.66;
 /** Estimated list row height, so the list knows it overflows without measuring. */
 const ROW_H = 64;
@@ -121,6 +123,11 @@ export function installSwitcher(paseo: Paseo): Switcher {
   let workspacesAt = 0;
   /** Rasterized thumbnails by workspace key, oldest first. Each canvas records its theme. */
   const thumbs = new Map<string, Node>();
+  /** Thumbnail sources taken since the last write; stored in idle time so previews survive a reload. */
+  const store = previewStore(g);
+  const unsaved = new Map<string, StoredPreview>();
+  let saveTimer: any = null;
+  let restored = false;
 
   // Switcher state. `open` is true from the first Ctrl+Tab; `root` exists only once drawn.
   let open = false;
@@ -415,6 +422,41 @@ export function installSwitcher(paseo: Paseo): Switcher {
     if (!rastering) scheduleRaster();
   }
 
+  function remember(entry: StoredPreview) {
+    unsaved.set(entry.key, entry);
+    saveTimer ??= setTimeout(() => whenIdle(savePreviews), SAVE_EVERY_MS);
+  }
+
+  function savePreviews() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (!unsaved.size) return;
+    const entries = [...unsaved.values()];
+    unsaved.clear();
+    void store.save(entries, MAX_THUMBS);
+  }
+
+  /** Redraws the previews saved before the last reload, one per idle slot, newest first. */
+  async function restorePreviews() {
+    if (restored || layout !== "strip") return;
+    restored = true;
+    const saved = (await store.load()).sort((a, b) => b.at - a.at).slice(0, MAX_THUMBS);
+    for (const entry of saved) {
+      if (disposed || layout !== "strip") return;
+      if (thumbs.has(entry.key)) continue;
+      await new Promise<void>((resolve) => whenIdle(resolve));
+      const canvas = await drawSvg(entry.svg, entry.dark, entry.width, entry.height).catch(() => null);
+      if (!canvas || disposed || thumbs.has(entry.key)) continue;
+      // Older than anything taken in this session, so it goes to the front of the oldest-first map.
+      const newer = [...thumbs];
+      thumbs.clear();
+      thumbs.set(entry.key, canvas);
+      for (const [key, value] of newer) thumbs.set(key, value);
+      while (thumbs.size > MAX_THUMBS) thumbs.delete(thumbs.keys().next().value as string);
+      if (root) swapThumb(entry.key, canvas);
+    }
+  }
+
   function scheduleRaster() {
     rastering = true;
     whenIdle(() => void rasterNext());
@@ -528,8 +570,16 @@ export function installSwitcher(paseo: Paseo): Switcher {
       `<foreignObject x="0" y="0" width="${w}" height="${h}">` +
       `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;display:flex;background:${snap.surface};font-family:system-ui,-apple-system,sans-serif">` +
       `<style><![CDATA[${css}]]></style>${html}</div></foreignObject></svg>`;
-    const url = g.URL.createObjectURL(new g.Blob([svg], { type: "image/svg+xml" }));
     measure("serialize", started);
+    const dark = isDark(snap.surface);
+    const canvas = await drawSvg(svg, dark, outW, outH);
+    if (canvas) remember({ key: snap.key, svg, dark, width: outW, height: outH, at: Date.now() });
+    return canvas;
+  }
+
+  /** Draws a thumbnail's SVG source onto a canvas, in idle time. */
+  async function drawSvg(svg: string, dark: boolean, outW: number, outH: number): Promise<Node> {
+    const url = g.URL.createObjectURL(new g.Blob([svg], { type: "image/svg+xml" }));
     try {
       const img = new g.Image();
       img.src = url;
@@ -540,7 +590,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
       canvas.width = outW;
       canvas.height = outH;
       canvas.className = "pws-canvas";
-      canvas.dataset.dark = String(isDark(snap.surface));
+      canvas.dataset.dark = String(dark);
       canvas.getContext("2d").drawImage(img, 0, 0, outW, outH);
       measure("draw", drawStarted);
       return canvas;
@@ -698,12 +748,12 @@ export function installSwitcher(paseo: Paseo): Switcher {
       // Rows plus panel padding, against the panel's max height (see .pws-list .pws-panel).
       overflowing = cards.length * ROW_H + 12 > win.innerHeight - Math.max(48, win.innerHeight * 0.16) - 150;
     } else {
-      // Fit every card in the window when possible, within readable thumbnail sizes.
-      const fit = Math.floor((win.innerWidth - 96 - 20 - (cards.length - 1) * 6) / Math.max(cards.length, 1)) - 16;
-      const cardW = Math.max(CARD_MIN, Math.min(CARD_MAX, fit));
-      // Card width + padding + gap, plus panel padding, against the panel's max width.
-      overflowing = cards.length * (cardW + 16 + 6) + 14 > win.innerWidth - 96;
+      // Every card when they fit; otherwise whole cards plus a peek of the next (client/strip.ts).
+      const fit = stripFit(win.innerWidth, cards.length);
+      const cardW = fit.cardW;
+      overflowing = fit.overflowing;
       root.classList.toggle("pws-overflow", overflowing);
+      root.style.setProperty("--pws-peek", `${PEEK}px`);
       root.style.setProperty("--pws-w", `${cardW}px`);
       root.style.setProperty("--pws-h", `${Math.round(cardW * ASPECT)}px`);
     }
@@ -737,7 +787,17 @@ export function installSwitcher(paseo: Paseo): Switcher {
     if (cards.length || query) parts.push(hintBar());
     root.replaceChildren(...parts);
     if (fresh) host.appendChild(root);
+    if (overflowing && !list) panel.addEventListener("scroll", () => edges(panel), { passive: true });
     select();
+    if (overflowing && !list) edges(panel);
+  }
+
+  /** Fade only the sides that have more cards beyond them; a strip at its start has a crisp left edge. */
+  function edges(panel: Node) {
+    if (!root) return;
+    const max = panel.scrollWidth - panel.clientWidth;
+    root.classList.toggle("pws-more-start", panel.scrollLeft > 1);
+    root.classList.toggle("pws-more-end", panel.scrollLeft < max - 1);
   }
 
   function narrow(): boolean {
@@ -889,8 +949,8 @@ export function installSwitcher(paseo: Paseo): Switcher {
     const node = option(card, i, "pws-card pws-row", name);
 
     node.appendChild(el("kbd", "pws-number", i < 9 ? String(i + 1) : ""));
+    // The project is the meta line's first part; a letter tile beside the keycap only repeated it.
     const project = info?.project ?? null;
-    node.appendChild(el("div", "pws-badge", (project ?? "?").slice(0, 1).toUpperCase()));
 
     const main = el("div", "pws-main");
     main.appendChild(nameNode("pws-name", name));
@@ -1090,8 +1150,10 @@ export function installSwitcher(paseo: Paseo): Switcher {
       whenIdle(() => win.requestAnimationFrame(() => setTimeout(snapshotIfDirty, 0)));
     }
   }, REFRESH_MS);
+  win.addEventListener("pagehide", savePreviews);
   syncRoute();
   watchWorkspaces();
+  void restorePreviews();
 
   const api: Switcher = {
     history,
@@ -1105,9 +1167,11 @@ export function installSwitcher(paseo: Paseo): Switcher {
     setLayout(next) {
       layout = parseLayout(next);
       writeJson(LAYOUT_KEY, layout);
+      void restorePreviews();
     },
     dispose() {
       close();
+      savePreviews();
       disposed = true;
       releaseFeed?.();
       history?.dispose();
@@ -1121,6 +1185,7 @@ export function installSwitcher(paseo: Paseo): Switcher {
       win.removeEventListener("keyup", onKeyUp, true);
       keys.release();
       win.removeEventListener("blur", onBlur);
+      win.removeEventListener("pagehide", savePreviews);
       win.removeEventListener("popstate", syncRoute);
       doc.removeEventListener("scroll", onScroll, { capture: true });
       style.remove();
@@ -1280,11 +1345,16 @@ const CSS = `
   display: flex; align-items: flex-start; gap: 6px; padding: 10px; box-sizing: border-box; overflow-x: auto;
   scrollbar-width: thin; scrollbar-color: var(--pws-ring) transparent;
 }
-/* An overflowing strip fades at its edges instead of cutting a card mid-word. */
+/* An overflowing strip shows whole cards plus a peek of the next one (client/strip.ts). Only a side
+ * with more cards beyond it fades, over the peek's width, and the selection scrolls clear of the fade. */
 .pws-overflow .pws-panel {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  --pws-fade-start: 0px; --pws-fade-end: 0px;
+  scroll-padding-inline: var(--pws-peek);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--pws-fade-start), #000 calc(100% - var(--pws-fade-end)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--pws-fade-start), #000 calc(100% - var(--pws-fade-end)), transparent);
 }
+.pws-more-start .pws-panel { --pws-fade-start: var(--pws-peek); }
+.pws-more-end .pws-panel { --pws-fade-end: var(--pws-peek); }
 .pws-card {
   flex: 0 0 auto; width: var(--pws-w); padding: 8px 8px 10px; border-radius: 15px; cursor: default;
   transition: background-color 90ms ease, box-shadow 90ms ease;
@@ -1368,19 +1438,20 @@ const CSS = `
   max-height: calc(100vh - max(48px, 16vh) - 150px); overflow-x: hidden; overflow-y: auto;
 }
 .pws-row {
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: start; column-gap: 12px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; column-gap: 12px;
   width: auto; padding: 10px 12px; border-radius: 12px;
 }
 .pws-list .pws-number { margin-top: 1px; }
-.pws-badge {
-  width: 22px; height: 22px; border-radius: 7px; background: var(--pws-tile); color: var(--pws-muted); font-size: 12px; font-weight: 650;
-  display: flex; align-items: center; justify-content: center;
-}
 .pws-main { min-width: 0; }
 .pws-list .pws-name {
   display: block; font-size: 14px; line-height: 20px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
 }
-.pws-list .pws-meta { flex-wrap: wrap; align-items: center; gap: 2px 12px; margin: 3px 0 0; line-height: 17px; }
+.pws-list .pws-meta { flex-wrap: wrap; align-items: center; gap: 2px 0; margin: 3px 0 0; line-height: 17px; }
+/* Parts read as one line, separated like the strip's "app · main". */
+.pws-list .pws-meta > * + *::before { content: "·"; margin: 0 7px; color: var(--pws-muted); font-family: system-ui, -apple-system, sans-serif; font-size: 12px; }
+/* Icon chips already space their children 4px apart. */
+.pws-list .pws-meta > .pws-pr::before, .pws-list .pws-meta > .pws-checks::before,
+.pws-list .pws-meta > .pws-ahead::before, .pws-list .pws-meta > .pws-diff::before { margin-right: 3px; }
 .pws-part { white-space: nowrap; }
 .pws-branch { white-space: normal; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
 .pws-icon { width: 13px; height: 13px; flex: 0 0 auto; }
@@ -1401,7 +1472,6 @@ const CSS = `
 .pws-status + .pws-time { margin-top: 0; }
 @media (max-width: 599px) {
   .pws-row { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 10px; padding: 10px; }
-  .pws-badge { display: none; }
   .pws-note { padding-left: 12px; }
 }
 @keyframes pws-fade { from { opacity: 0; } }
