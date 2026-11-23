@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CARD_MAX, CARD_MIN, PEEK, stripFit } from "../client/strip.ts";
-import { trimPreviews, type StoredPreview } from "../client/previews.ts";
+import { trimPreviews, type PreviewMeta } from "../client/previews.ts";
 
 /** The strip's visible width: the sheet's max width minus the panel's padding (see .pws-sheet, .pws-panel). */
 const visible = (width: number) => width - 96 - 20;
@@ -27,7 +27,7 @@ for (const [width, count] of [[1440, 9], [900, 9], [1200, 7], [1024, 6], [700, 4
 }
 
 test("previews keep the newest entries within the count and size caps", () => {
-  const p = (key: string, at: number, size: number): StoredPreview => ({ key, at, svg: "x".repeat(size), dark: false, width: 1, height: 1 });
+  const p = (key: string, at: number, bytes: number): PreviewMeta => ({ key, at, bytes });
   const all = [p("a", 1, 10), p("b", 2, 10), p("c", 3, 10), p("d", 4, 10)];
   assert.deepEqual(trimPreviews(all, 3, 1000).map((e) => e.key), ["b", "c", "d"]);
   assert.deepEqual(trimPreviews(all, 9, 25).map((e) => e.key), ["c", "d"]);

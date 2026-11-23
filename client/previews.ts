@@ -16,14 +16,21 @@ export interface StoredPreview {
 
 export const MAX_PREVIEW_BYTES = 8 * 1024 * 1024;
 
+/** What trimming needs to know about a stored preview: no SVG text. */
+export interface PreviewMeta {
+  key: string;
+  at: number;
+  bytes: number;
+}
+
 /** The newest previews that fit both caps, oldest first. */
-export function trimPreviews(all: StoredPreview[], max: number, maxBytes: number): StoredPreview[] {
-  const kept: StoredPreview[] = [];
+export function trimPreviews<T extends PreviewMeta>(all: T[], max: number, maxBytes: number): T[] {
+  const kept: T[] = [];
   let bytes = 0;
   for (const entry of [...all].sort((a, b) => b.at - a.at)) {
     if (kept.length >= max) break;
-    if (bytes + entry.svg.length > maxBytes) continue;
-    bytes += entry.svg.length;
+    if (bytes + entry.bytes > maxBytes) continue;
+    bytes += entry.bytes;
     kept.push(entry);
   }
   return kept.reverse();
@@ -39,6 +46,11 @@ export interface PreviewStore {
 
 export function previewStore(g: any): PreviewStore {
   let db: Promise<any> | null = null;
+  /**
+   * What is stored, without the SVG text: saving trims from this index, so a save writes only the
+   * changed entries and never reads megabytes of stored SVG back on the main thread.
+   */
+  let index: Map<string, PreviewMeta> | null = null;
   const open = (): Promise<any> => {
     db ??= new Promise((resolve) => {
       try {
@@ -57,27 +69,31 @@ export function previewStore(g: any): PreviewStore {
     new Promise<void>((resolve) => {
       tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
     });
+  const meta = (e: StoredPreview): PreviewMeta => ({ key: e.key, at: e.at, bytes: e.svg.length });
+  async function load(): Promise<StoredPreview[]> {
+    const d = await open();
+    if (!d) return [];
+    try {
+      const request = d.transaction(STORE, "readonly").objectStore(STORE).getAll();
+      const all = await new Promise<StoredPreview[]>((resolve) => {
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => resolve([]);
+      });
+      index = new Map(all.map((e) => [e.key, meta(e)]));
+      return all;
+    } catch {
+      return [];
+    }
+  }
   return {
-    async load() {
-      const d = await open();
-      if (!d) return [];
-      try {
-        const request = d.transaction(STORE, "readonly").objectStore(STORE).getAll();
-        return await new Promise<StoredPreview[]>((resolve) => {
-          request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
-          request.onerror = () => resolve([]);
-        });
-      } catch {
-        return [];
-      }
-    },
+    load,
     async save(entries, max) {
       const d = await open();
       if (!d) return;
       try {
-        const existing = await this.load();
-        const merged = new Map(existing.map((e) => [e.key, e]));
-        for (const e of entries) merged.set(e.key, e);
+        if (!index) await load();
+        const merged = new Map(index);
+        for (const e of entries) merged.set(e.key, meta(e));
         const keep = trimPreviews([...merged.values()], max, MAX_PREVIEW_BYTES);
         const keys = new Set(keep.map((e) => e.key));
         const tx = d.transaction(STORE, "readwrite");
@@ -85,6 +101,7 @@ export function previewStore(g: any): PreviewStore {
         for (const key of merged.keys()) if (!keys.has(key)) store.delete(key);
         for (const e of entries) if (keys.has(e.key)) store.put(e);
         await done(tx);
+        index = new Map([...merged].filter(([key]) => keys.has(key)));
       } catch {
         // Storage full or unavailable: thumbnails just start empty after the next reload.
       }
