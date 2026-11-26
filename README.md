@@ -105,7 +105,6 @@ The end-to-end suite and media script drive Paseo's web UI in headless Chromium 
 - [Defer](https://github.com/tomgrin10/paseo-defer) — Schedule messages for later delivery.
 - [Follow-up](https://github.com/tomgrin10/paseo-follow-up) — Track workspace PRs, remaining tasks and completion.
 - [Send to Paseo](https://github.com/tomgrin10/send-to-paseo) — Send GitHub and Graphite PRs to Paseo from Chrome.
-- [Session Guard](https://github.com/tomgrin10/paseo-session-guard) — Pause at session limits and continue after reset.
 - [Smart Session](https://github.com/tomgrin10/paseo-smart-session) — Context compaction and usage insights.
 - [Transcript Search](https://github.com/tomgrin10/paseo-transcript-search) — Search conversations across connected hosts.
 - [Transfer](https://github.com/tomgrin10/paseo-transfer) — Copy or move workspaces between hosts.
